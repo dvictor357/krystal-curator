@@ -28,6 +28,7 @@ from textual.widgets.option_list import Option
 from textual_image.widget import HalfcellImage, Image, SixelImage, TGPImage, UnicodeImage
 
 from . import api
+from .advisor import Advice, advise, price_ladder
 from .api import KrystalError
 from .enrich import TokenInfo, TokenMeta
 from .models import Pool
@@ -64,6 +65,7 @@ def pick_image_mode(explicit: str | None = None) -> str:
 
 
 SNAPSHOT_EVERY = 15 * 60  # seconds between full-universe snapshots
+POS_PNL_DROP = 0.05  # alert when a position's PnL falls by this fraction of its value
 
 RADAR_LABEL = {
     "yield": "YLD",
@@ -244,9 +246,13 @@ class PositionsScreen(Screen[str | None]):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="pos_topbar")
-        table = DataTable(id="pos_table", cursor_type="row")
-        table.border_title = "MY POSITIONS"
-        yield table
+        with Horizontal(id="pos_body"):
+            table = DataTable(id="pos_table", cursor_type="row")
+            table.border_title = "MY POSITIONS"
+            yield table
+            detail = Static("", id="pos_detail")
+            detail.border_title = "POSITION DETAIL"
+            yield detail
         yield Static("", id="pos_vaults")
         yield Static("", id="pos_status")
         yield Footer()
@@ -293,14 +299,7 @@ class PositionsScreen(Screen[str | None]):
         if direct is not None:
             self.curator.units_used += POSITIONS_UNITS
             self.curator.positions = direct
-        for p in self._open_positions():
-            if not p.in_range:
-                self.app.notify(
-                    f"{p.pair} OUT OF RANGE ({p.value:,.0f}$)",
-                    title=p.vault or "WALLET",
-                    severity="warning",
-                    timeout=15,
-                )
+        self.curator._check_positions()
         self._fill()
         if err:
             self.query_one("#pos_status", Static).update(
@@ -390,11 +389,141 @@ class PositionsScreen(Screen[str | None]):
             )
         self._topbar()
         self._vault_lines()
+        if self._order:
+            table.move_cursor(row=0)
+            self._render_detail(self._order[0])
+        else:
+            self.query_one("#pos_detail", Static).update(Text("no positions", style="dim"))
         closed = "hide" if self.show_closed else "show"
         self.query_one("#pos_status", Static).update(
             f"{len(self._open_positions())} open, {len(self._closed_positions())} closed   r refresh   c {closed} closed   "
             f"enter = screen this pool   o open vault   esc back"
         )
+
+    def _render_detail(self, p: Position) -> None:
+        c = self.curator
+        sc = c.pool_for(p.pool_address, p.pool_alt)
+        pool = sc.pool if sc else None
+        adv = c.advice_for(p)
+        t = Table.grid(padding=(0, 1), expand=True)
+        t.add_column(style="#ffb000", no_wrap=True)
+        t.add_column(style="white")
+        st_style = "bold green" if p.in_range else "dim" if p.status == "CLOSED" else "bold red"
+        t.add_row(
+            "POSITION",
+            Text.assemble(
+                (f"{p.pair}  ", "bold white"),
+                (f"[{p.protocol}]  ", "cyan"),
+                (p.vault or "wallet", "#ffb000"),
+                ("  ", ""),
+                (p.status, st_style),
+            ),
+        )
+        t.add_row("", "")
+
+        # ---- range ladder + edges
+        t.add_row("RANGE", Text(price_ladder(p, 44), style="#ffb000"))
+        t.add_row(
+            "",
+            f"min {p.min_price:,.4g}   now {p.current_price:,.4g}   max {p.max_price:,.4g}"
+            f"   half-width ±{adv.width_pct:.1f}%"
+            if p.current_price
+            else "range unknown",
+        )
+        sig = c.sigma_for(p)
+        if sig is not None and pool is not None:
+            t.add_row(
+                "",
+                Text(
+                    f"pool σ {sig:.1f}%/day  →  7d 1σ range would be ±{sig * 7**0.5:.1f}%",
+                    style="dim",
+                ),
+            )
+        e = Table(box=None, pad_edge=False, expand=True, header_style="bold #ffb000")
+        e.add_column("EDGE")
+        e.add_column("PRICE", justify="right")
+        e.add_column("DIST", justify="right")
+        e.add_column("σ", justify="right")
+        e.add_column("~DAYS", justify="right")
+        e.add_column("")
+        for ed in (adv.lower, adv.upper):
+            if ed is None:
+                continue
+            urg = ed.urgency
+            style = {"CRITICAL": "bold red", "close": "red", "watch": "yellow", "ok": "green"}.get(
+                urg, "dim"
+            )
+            e.add_row(
+                ed.name,
+                f"{ed.price:,.4g}",
+                f"{ed.dist_pct:.1f}%",
+                f"{ed.sigmas:.1f}" if ed.sigmas is not None else "-",
+                f"{ed.days:.1f}" if ed.days is not None else "-",
+                Text(urg, style=style),
+            )
+        t.add_row("EDGES", e)
+        t.add_row("", "")
+
+        # ---- performance
+        perf = Table.grid(padding=(0, 2))
+        perf.add_column(style="#ffb000", no_wrap=True)
+        perf.add_column(style="white")
+        perf.add_row(
+            "value", f"{p.value:,.0f}$   deposit {p.deposit:,.0f}$   held {adv.hold_days:.1f}d"
+        )
+        perf.add_row(
+            "pnl",
+            Text(f"{p.pnl:+,.0f}$  ({p.roi_pct:+.2f}%)", style="green" if p.pnl >= 0 else "red"),
+        )
+        perf.add_row(
+            "fees",
+            f"{p.fees_total:,.2f}$ total, {p.fee_pending:,.2f}$ pending   "
+            f"realised {adv.fee_per_day:,.2f}$/d = {adv.fee_yield_day * 100:.3f}%/d",
+        )
+        if pool is not None:
+            ratio = adv.fee_yield_day / pool.fee_yield_24h if pool.fee_yield_24h > 0 else 0
+            perf.add_row(
+                "vs pool",
+                f"pool fee yield {pool.fee_yield_24h * 100:.3f}%/d  →  you capture {ratio:.2f}× "
+                f"({'concentrated' if ratio > 1.2 else 'diluted' if ratio < 0.8 else 'on par'})",
+            )
+        perf.add_row("apr", f"{p.fee_apr:.2f}% (Krystal, 24h basis)")
+        t.add_row("PERF", perf)
+        t.add_row("", "")
+
+        # ---- pool health from the screener
+        if sc is not None and pool is not None:
+            h = Table.grid(padding=(0, 2))
+            h.add_column(style="#ffb000", no_wrap=True)
+            h.add_column(style="white")
+            h.add_row(
+                "grade",
+                Text.assemble(
+                    (sc.grade, "bold"),
+                    (f"   score {sc.score:.1f} ({c.profile.name.lower()})   ", ""),
+                    (" ".join(sc.flags), "magenta"),
+                ),
+            )
+            h.add_row(
+                "24h",
+                f"vol {pool.s24h.volume:,.0f}$  fee {pool.s24h.fee:,.0f}$  yield {pool.fee_yield_24h * 100:.3f}%/d"
+                f"  turnover {pool.turnover_24h:.1f}x",
+            )
+            h.add_row(
+                "signal",
+                f"consistency {pool.consistency:.2f}   liveness {pool.liveness:.2f}   σ {pool.volatility:.1f}%"
+                f"   dd24 {pool.drawdown24h:.1f}%",
+            )
+            axes = [(RADAR_LABEL.get(k, k.upper()), v) for k, v in sc.parts.items()]
+            h.add_row("", render_radar(axes, cols=34, rows=11, show_values=False))
+            t.add_row("POOL", h)
+        else:
+            t.add_row("POOL", Text("not in the LP explorer feed (no health data)", style="dim"))
+        self.query_one("#pos_detail", Static).update(t)
+
+    def on_data_table_row_highlighted(self, ev: DataTable.RowHighlighted) -> None:
+        if ev.cursor_row is not None and 0 <= ev.cursor_row < len(self._order):
+            self._render_detail(self._order[ev.cursor_row])
 
     # ---- actions --------------------------------------------------------
     def _selected(self) -> Position | None:
@@ -472,6 +601,7 @@ class CuratorApp(App[None]):
         self.watch_only = False
         self.store = Store()
         self._hist_cache: dict[str, tuple[Delta, str]] = {}
+        self._pos_state: dict[str, dict] = {}  # last seen state per position id
         self._timer = None
         self.image_mode = pick_image_mode(image_mode)
         self.image_cls = IMAGE_MODES[self.image_mode]
@@ -539,15 +669,83 @@ class CuratorApp(App[None]):
         except api.KrystalError as e:
             self.call_from_thread(self._set_status, f"ERROR {e}")
             return
-        self.call_from_thread(self._on_pools, pools)
+        vaults: list[Vault] | None = None
+        if self.wallet:
+            try:
+                vaults = fetch_vaults(self.wallet, chain_id=self.chain_id)
+            except KrystalError as e:
+                self.call_from_thread(self.notify, str(e), title="VAULTS", severity="error")
+        self.call_from_thread(self._on_pools, pools, vaults)
 
-    def _on_pools(self, pools: list[Pool]) -> None:
+    def _on_pools(self, pools: list[Pool], vaults: list[Vault] | None = None) -> None:
         self.pools = pools
         self.last_refresh = datetime.now(UTC)
         if not self.available_protocols:
             self.available_protocols = sorted({p.protocol for p in pools})
         self._snapshot_and_alert(pools)
+        if vaults is not None:
+            self.vaults = vaults
+            self._check_positions()
         self._rebuild()
+
+    # ---- position monitoring (runs on every refresh, free API) ------------
+    def open_positions(self) -> list[Position]:
+        return [p for v in self.vaults for p in v.positions] + list(self.positions)
+
+    def sigma_for(self, p: Position) -> float | None:
+        sc = self.pool_for(p.pool_address, p.pool_alt)
+        return sc.pool.volatility if sc else None
+
+    def advice_for(self, p: Position) -> Advice:
+        return advise(p, self.sigma_for(p))
+
+    def _check_positions(self) -> None:
+        """Toast on state changes since the previous refresh; first pass only warns on
+        conditions that are bad right now (out of range, edge critical)."""
+        first = not self._pos_state
+        for p in self.open_positions():
+            sc = self.pool_for(p.pool_address, p.pool_alt)
+            grade = sc.grade if sc else "?"
+            adv = self.advice_for(p)
+            prev = self._pos_state.get(p.id)
+            label = f"{p.vault or 'wallet'} {p.pair}"
+            if not p.in_range and (first or (prev and prev["in_range"])):
+                self.notify(
+                    f"{label} OUT OF RANGE ({p.value:,.0f}$)",
+                    title="POSITION",
+                    severity="error",
+                    timeout=30,
+                )
+            elif p.in_range and prev and not prev["in_range"]:
+                self.notify(f"{label} back in range", title="POSITION", severity="information")
+            n = adv.nearest
+            if adv.alert and n and (first or not (prev and prev["edge_alert"])):
+                self.notify(
+                    f"{label}: {n.name} edge {n.dist_pct:.1f}% away ≈ {n.sigmas:.1f}σ (~{n.days:.1f}d)",
+                    title="EDGE",
+                    severity="warning",
+                    timeout=30,
+                )
+            if prev and grade != "?" and prev["grade"] != "?" and grade > prev["grade"]:
+                self.notify(
+                    f"{label}: pool grade {prev['grade']} → {grade}",
+                    title="POOL DECAY",
+                    severity="warning",
+                    timeout=30,
+                )
+            if prev and p.value > 0 and (prev["pnl"] - p.pnl) / p.value >= POS_PNL_DROP:
+                self.notify(
+                    f"{label}: PnL {prev['pnl']:+,.0f}$ → {p.pnl:+,.0f}$",
+                    title="PNL DROP",
+                    severity="warning",
+                    timeout=30,
+                )
+            self._pos_state[p.id] = {
+                "in_range": p.in_range,
+                "grade": grade,
+                "pnl": p.pnl,
+                "edge_alert": adv.alert,
+            }
 
     def _snapshot_and_alert(self, pools: list[Pool]) -> None:
         """Persist pools worth tracking, then warn about watched pools that moved hard.
@@ -743,9 +941,21 @@ class CuratorApp(App[None]):
         )
         auto = f"   AUTO:{every}" if self.auto else "   AUTO:off"
         watch = f"   ★{len(self.store.watch)}" + ("(only)" if self.watch_only else "")
+        pos = ""
+        if self.wallet:
+            opens = self.open_positions()
+            oor = sum(1 for p in opens if not p.in_range)
+            edge = sum(1 for p in opens if self.advice_for(p).alert)
+            e24 = sum(v.earning_24h for v in self.vaults)
+            pos = f"   POS:{len(opens)}"
+            if oor:
+                pos += f" OOR:{oor}"
+            if edge:
+                pos += f" EDGE:{edge}"
+            pos += f" 24h{e24:+,.0f}$"
         self.main.query_one("#topbar", Static).update(
             f" KRYSTAL CURATOR   {chain}({self.chain_id})   QUOTE:{quote}   PROTO:{proto}   "
-            f"PROFILE:{self.profile.name}{size}{auto}{watch}   {ts}{cloud}{img}"
+            f"PROFILE:{self.profile.name}{size}{auto}{watch}{pos}   {ts}{cloud}{img}"
         )
 
     def _set_status(self, msg: str) -> None:

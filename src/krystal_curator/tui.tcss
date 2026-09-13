@@ -151,7 +151,21 @@ PositionsScreen {
     text-style: bold;
     padding: 0 1;
 }
+#pos_body {
+    height: 1fr;
+}
+#pos_detail {
+    width: 78;
+    height: 1fr;
+    border: solid #a05e00;
+    border-title-color: #ffb000;
+    border-title-style: bold;
+    background: #000000;
+    padding: 0 1;
+    overflow-y: auto;
+}
 #pos_table {
+    width: 1fr;
     height: 1fr;
     border: solid #a05e00;
     border-title-color: #ffb000;

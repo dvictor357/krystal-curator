@@ -28,7 +28,8 @@ def test_parse_strategy():
     p = parse_strategy(STRATEGY, "Mr. Farmer")
     assert p.vault == "Mr. Farmer" and p.pair == "ETH/USDG" and p.protocol == "uniswapv4"
     assert p.pool_address.startswith("0xbac3aa3b") and p.pool_alt.startswith("0x8366a39c")
-    assert p.in_range and abs(p.fee_pending - 7.98) < 1e-9 and abs(p.fee_claimed - 7.98) < 1e-9
+    assert p.in_range and abs(p.fee_pending - 7.98) < 1e-9
+    assert abs(p.fee_claimed) < 1e-9 and abs(p.fees_total - 7.98) < 1e-9  # generated == pending
     assert 1.9 < p.age_days < 2.1
     rp = p.range_pos
     assert rp is not None and 0.29 < rp < 0.32

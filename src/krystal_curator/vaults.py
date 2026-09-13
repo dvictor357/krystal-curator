@@ -111,8 +111,9 @@ def parse_strategy(s: dict, vault_name: str) -> Position:
         pnl=fnum(s.get("pnl")),
         roi_pct=fnum(s.get("roi")),
         il=0.0,
+        # feeGenerated is lifetime fees including what is still pending
         fee_pending=pending,
-        fee_claimed=fnum(s.get("feeGenerated")),
+        fee_claimed=max(0.0, fnum(s.get("feeGenerated")) - pending),
         reward_pending=fnum(s.get("farmRewardPending")),
         fee_apr=fnum(s.get("apr")),
         total_apr=fnum(s.get("apr")),

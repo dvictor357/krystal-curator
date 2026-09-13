@@ -81,7 +81,17 @@ with its TVL, PnL, APR, 24h/30d earnings, risk score and a closed-position track
 ROI, fees, pending fees, APR, age, a range bar (● = current price between min and max) and,
 joined from the screener, the pool's grade / fee yield / volatility so you see when a pool
 you are in has decayed. `c` toggles closed positions, `Enter` jumps the screener to that
-pool, `o` opens the vault, out-of-range positions raise a toast.
+pool, `o` opens the vault.
+
+The detail pane shows a log-scale price ladder, each range edge's distance in %, in daily-σ
+units (pool volatility) and in expected days for a random walk to reach it, realised fee/day
+vs the pool's fee yield (are you capturing more or less than an average LP), and the pool's
+screener health with its radar.
+
+Vaults are refetched on every screener refresh (free API), so monitoring runs without
+opening `P`: the main top bar shows `POS:n OOR:k EDGE:m 24h+$`, and toasts fire when a
+position leaves / re-enters range, an edge comes within 0.5σ, the pool's grade worsens, or
+PnL drops by 5 % of value between refreshes.
 
 With a Cloud key (`KRYSTAL_CLOUD_KEY`, https://cloud.krystal.app) the view also lists LP
 NFTs held directly by the wallet — 10 units per refresh, on demand only (free tier 50,000).
