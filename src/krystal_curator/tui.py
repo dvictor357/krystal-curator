@@ -261,8 +261,8 @@ class CuratorApp(App[None]):
             "PAIR",
             Text(f"{p.pair}  [{p.protocol}]  tier {p.fee_tier_pct:.3f}%", style="bold"),
         )
-        t.add_row("POOL", p.address)
-        t.add_row("URL", Text(p.url, style="underline cyan"))
+        t.add_row("POOL", Text(p.address, overflow="fold"))
+        t.add_row("URL", Text(p.url, style=f"link {p.url} underline cyan", overflow="fold"))
         t.add_row("TVL", f"{p.tvl:,.0f}   grade {s.grade}   {' '.join(s.flags)}")
         t.add_row("", "")
 
