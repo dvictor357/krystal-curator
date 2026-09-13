@@ -34,6 +34,45 @@ starred pool's TVL moves ≥30 % in an hour, fee24 halves, or drawdown passes �
 `--refresh 300` sets the auto-refresh period (0 = off). Cursor stays on the same pool across
 refreshes and re-sorts.
 
+## Headless monitor + Telegram (`watch`)
+
+```sh
+uv run krystal-curator watch --interval 300 --telegram --digest-hour 0
+uv run krystal-curator watch --once            # one tick, for cron
+```
+
+Same refresh, snapshots and alert rules as the TUI, without a terminal. Alerts go to stdout
+and, with `--telegram`, to a Telegram chat. Put in `.env`:
+
+```
+TELEGRAM_BOT_TOKEN=123456:ABC…     # from @BotFather
+TELEGRAM_CHAT_ID=123456789         # your user id (message the bot, then GET /getUpdates) or a group id
+```
+
+`--digest-hour H` writes the vault report at that UTC hour and sends it as a file.
+
+Run it under launchd on macOS (keeps running across logins):
+
+```xml
+<!-- ~/Library/LaunchAgents/app.krystal-curator.watch.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>app.krystal-curator.watch</string>
+  <key>WorkingDirectory</key><string>/Users/you/Projects/web3/krystal-curator</string>
+  <key>ProgramArguments</key><array>
+    <string>/opt/homebrew/bin/uv</string><string>run</string><string>krystal-curator</string>
+    <string>watch</string><string>--telegram</string><string>--digest-hour</string><string>0</string>
+  </array>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/krystal-watch.log</string>
+  <key>StandardErrorPath</key><string>/tmp/krystal-watch.log</string>
+</dict></plist>
+```
+
+`launchctl load ~/Library/LaunchAgents/app.krystal-curator.watch.plist`. The TUI and the
+daemon share the same local db, so history built by one shows in the other.
+
 ## Position simulator
 
 `--size 50000` (or `$` in the TUI) sets your position size. Every row then shows what *you*
@@ -113,6 +152,45 @@ PnL drops by 5 % of value between refreshes.
 With a Cloud key (`KRYSTAL_CLOUD_KEY`, https://cloud.krystal.app) the view also lists LP
 NFTs held directly by the wallet — 10 units per refresh, on demand only (free tier 50,000).
 The top bar counts units spent. `scan --tx` uses the same key for 24h transaction counts.
+
+## Headless monitor + Telegram (`watch`)
+
+```sh
+uv run krystal-curator watch --interval 300 --telegram --digest-hour 0
+uv run krystal-curator watch --once            # one tick, for cron
+```
+
+Same refresh, snapshots and alert rules as the TUI, without a terminal. Alerts go to stdout
+and, with `--telegram`, to a Telegram chat. Put in `.env`:
+
+```
+TELEGRAM_BOT_TOKEN=123456:ABC…     # from @BotFather
+TELEGRAM_CHAT_ID=123456789         # your user id (message the bot, then GET /getUpdates) or a group id
+```
+
+`--digest-hour H` writes the vault report at that UTC hour and sends it as a file.
+
+Run it under launchd on macOS (keeps running across logins):
+
+```xml
+<!-- ~/Library/LaunchAgents/app.krystal-curator.watch.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>app.krystal-curator.watch</string>
+  <key>WorkingDirectory</key><string>/Users/you/Projects/web3/krystal-curator</string>
+  <key>ProgramArguments</key><array>
+    <string>/opt/homebrew/bin/uv</string><string>run</string><string>krystal-curator</string>
+    <string>watch</string><string>--telegram</string><string>--digest-hour</string><string>0</string>
+  </array>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/krystal-watch.log</string>
+  <key>StandardErrorPath</key><string>/tmp/krystal-watch.log</string>
+</dict></plist>
+```
+
+`launchctl load ~/Library/LaunchAgents/app.krystal-curator.watch.plist`. The TUI and the
+daemon share the same local db, so history built by one shows in the other.
 
 ## Position simulator
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 import math
 import os
-import time
 import warnings
 import webbrowser
 from collections.abc import Callable
@@ -33,6 +32,7 @@ from .analytics import idle_capital, real_roi, report_markdown, track_record
 from .api import KrystalError
 from .enrich import TokenInfo, TokenMeta
 from .models import Pool
+from .monitor import Monitor
 from .position import simulate
 from .positions import POSITIONS_UNITS, Position, fetch_positions
 from .profiles import PROFILES, RiskProfile
@@ -65,10 +65,6 @@ def pick_image_mode(explicit: str | None = None) -> str:
         return "halfcell"
     return "auto"
 
-
-SNAPSHOT_EVERY = 15 * 60  # seconds between full-universe snapshots
-POS_PNL_DROP = 0.05  # alert when a position's PnL falls by this fraction of its value
-VAULT_SNAPSHOT_EVERY = 5 * 60  # seconds between vault equity snapshots
 
 RADAR_LABEL = {
     "yield": "YLD",
@@ -536,7 +532,10 @@ class PositionsScreen(Screen[str | None]):
         if direct is not None:
             self.curator.units_used += POSITIONS_UNITS
             self.curator.positions = direct
-        self.curator._check_positions()
+        self.curator.monitor.direct = self.curator.positions
+        self.curator.monitor.vaults = vaults
+        for a in self.curator.monitor._position_alerts():
+            self.app.notify(a.text, title=a.title, severity=a.severity, timeout=30)
         self._fill()
         if err:
             self.query_one("#pos_status", Static).update(
@@ -947,7 +946,7 @@ class CuratorApp(App[None]):
         self.watch_only = False
         self.store = Store()
         self._hist_cache: dict[str, tuple[Delta, str]] = {}
-        self._pos_state: dict[str, dict] = {}  # last seen state per position id
+        self.monitor = Monitor(self.store, profile=PROFILES[profile])
         self._timer = None
         self.image_mode = pick_image_mode(image_mode)
         self.image_cls = IMAGE_MODES[self.image_mode]
@@ -1028,33 +1027,14 @@ class CuratorApp(App[None]):
         self.last_refresh = datetime.now(UTC)
         if not self.available_protocols:
             self.available_protocols = sorted({p.protocol for p in pools})
-        self._snapshot_and_alert(pools)
+        self.monitor.profile = self.profile
+        self.monitor.direct = self.positions
+        for a in self.monitor.tick(pools, vaults):
+            self.notify(a.text, title=a.title, severity=a.severity, timeout=30)
         if vaults is not None:
             self.vaults = vaults
-            self._check_positions()
-            self._snapshot_vaults()
+        self._hist_cache.clear()
         self._rebuild()
-
-    def _snapshot_vaults(self) -> None:
-        if time.time() - self.store.last_vault_ts() < VAULT_SNAPSHOT_EVERY:
-            return
-        rows = []
-        for v in self.vaults:
-            idle, _ = idle_capital(v)
-            rows.append(
-                (
-                    v.chain_id,
-                    v.address,
-                    v.tvl,
-                    v.pnl,
-                    v.earning_24h,
-                    v.my_value,
-                    idle,
-                    len(v.positions),
-                )
-            )
-        if rows:
-            self.store.record_vaults(rows)
 
     # ---- position monitoring (runs on every refresh, free API) ------------
     def open_positions(self) -> list[Position]:
@@ -1078,90 +1058,6 @@ class CuratorApp(App[None]):
             current_pool=sc.pool if sc else None,
             top=top,
         )
-
-    def _check_positions(self) -> None:
-        """Toast on state changes since the previous refresh; first pass only warns on
-        conditions that are bad right now (out of range, edge critical)."""
-        first = not self._pos_state
-        for p in self.open_positions():
-            sc = self.pool_for(p.pool_address, p.pool_alt)
-            grade = sc.grade if sc else "?"
-            adv = self.advice_for(p)
-            prev = self._pos_state.get(p.id)
-            label = f"{p.vault or 'wallet'} {p.pair}"
-            if not p.in_range and (first or (prev and prev["in_range"])):
-                self.notify(
-                    f"{label} OUT OF RANGE ({p.value:,.0f}$)",
-                    title="POSITION",
-                    severity="error",
-                    timeout=30,
-                )
-            elif p.in_range and prev and not prev["in_range"]:
-                self.notify(f"{label} back in range", title="POSITION", severity="information")
-            n = adv.nearest
-            if adv.alert and n and (first or not (prev and prev["edge_alert"])):
-                self.notify(
-                    f"{label}: {n.name} edge {n.dist_pct:.1f}% away ≈ {n.sigmas:.1f}σ (~{n.days:.1f}d)",
-                    title="EDGE",
-                    severity="warning",
-                    timeout=30,
-                )
-            if prev and grade != "?" and prev["grade"] != "?" and grade > prev["grade"]:
-                self.notify(
-                    f"{label}: pool grade {prev['grade']} → {grade}",
-                    title="POOL DECAY",
-                    severity="warning",
-                    timeout=30,
-                )
-            if prev and p.value > 0 and (prev["pnl"] - p.pnl) / p.value >= POS_PNL_DROP:
-                self.notify(
-                    f"{label}: PnL {prev['pnl']:+,.0f}$ → {p.pnl:+,.0f}$",
-                    title="PNL DROP",
-                    severity="warning",
-                    timeout=30,
-                )
-            self._pos_state[p.id] = {
-                "in_range": p.in_range,
-                "grade": grade,
-                "pnl": p.pnl,
-                "edge_alert": adv.alert,
-            }
-
-    def _snapshot_and_alert(self, pools: list[Pool]) -> None:
-        """Persist pools worth tracking, then warn about watched pools that moved hard.
-
-        Watched pools are recorded on every refresh; the wider universe (aggressive
-        floor) at most every SNAPSHOT_EVERY seconds so the db stays small
-        (~325 pools × 96/day on Robinhood).
-        """
-        floor = PROFILES["aggressive"]
-        full = time.time() - self.store.last_ts() >= SNAPSHOT_EVERY
-        keep = [
-            p
-            for p in pools
-            if self.store.is_watched(p)
-            or (full and p.tvl >= floor.min_tvl and p.s24h.volume >= floor.min_vol24)
-        ]
-        for p in pools:
-            if self.store.is_watched(p):
-                d = self.store.delta(p, hours=1)
-                msgs = []
-                if d.tvl_pct is not None and abs(d.tvl_pct) >= 30:
-                    msgs.append(f"TVL {d.tvl_pct:+.0f}%")
-                if d.fee24_pct is not None and d.fee24_pct <= -50:
-                    msgs.append(f"fee24 {d.fee24_pct:+.0f}%")
-                if p.drawdown24h <= -30:
-                    msgs.append(f"drawdown {p.drawdown24h:.0f}%")
-                if msgs:
-                    self.notify(
-                        f"★ {p.pair}: {', '.join(msgs)}",
-                        title="WATCH ALERT",
-                        severity="warning",
-                        timeout=20,
-                    )
-        self.store.record(keep)
-        self.store.prune(14)
-        self._hist_cache.clear()
 
     def _hist(self, p: Pool) -> tuple[Delta, str]:
         key = p.address + p.protocol

@@ -10,7 +10,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from . import api
+from . import api, notify
 from .env import load_dotenv
 from .models import ROBINHOOD
 from .position import simulate
@@ -75,6 +75,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=f"fetch 24h tx count for the top rows via Cloud API (needs ${api.CLOUD_KEY_ENV}; costs credits)",
     )
+    watch = sub.add_parser("watch", help="headless monitor loop: snapshots + alerts (Telegram)")
+    _common(watch)
+    watch.add_argument(
+        "--interval", type=int, default=300, help="seconds between ticks (default 300)"
+    )
+    watch.add_argument(
+        "--telegram",
+        action="store_true",
+        help=f"send alerts via Telegram (needs ${notify.TOKEN_ENV} and ${notify.CHAT_ENV})",
+    )
+    watch.add_argument(
+        "--digest-hour",
+        type=int,
+        default=None,
+        help="UTC hour to write (and send) the daily vault report, e.g. 0",
+    )
+    watch.add_argument("--once", action="store_true", help="one tick then exit (cron mode)")
     return ap
 
 
@@ -200,6 +217,18 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.cmd == "scan":
         return run_scan(args)
+    if args.cmd == "watch":
+        from .daemon import run_watch
+
+        return run_watch(
+            chain_id=args.chain,
+            wallet=args.wallet or api.wallet(),
+            interval=args.interval,
+            profile=args.profile,
+            telegram=args.telegram,
+            digest_hour=args.digest_hour,
+            once=args.once,
+        )
     if args.cmd is None:
         args = ap.parse_args(["tui", *(argv or sys.argv[1:])])
     return run_tui(args)
