@@ -10,12 +10,13 @@ Default universe: Robinhood chain (4663), pools quoted in **USDG**, all protocol
 ## Quick start
 
 ```sh
-uv sync
-uv run krystal-curator init        # writes config.toml + .env templates
-$EDITOR config.toml .env           # wallet, profile, size, telegram…
-uv run krystal-curator             # TUI
-uv run krystal-curator config      # show effective settings + where they came from
+make setup            # uv sync, write config.toml + .env templates, open them
+make run              # TUI
+make config           # show effective settings + where they came from
+make help             # every shortcut
 ```
+
+Without make: `uv sync && uv run krystal-curator init && uv run krystal-curator`.
 
 Precedence: **CLI flag > env var (`KRYSTAL_*`) > `config.toml` > default**. Secrets
 (`KRYSTAL_WALLET` optional here, `KRYSTAL_CLOUD_KEY`, `TELEGRAM_*`) live in `.env`;
@@ -43,22 +44,17 @@ The detail panel shows both token logos and clickable social links. Logo rendere
 
 The daemon is the thing to deploy; the TUI is a client over the same sqlite db.
 
-**Docker (any host):**
-```sh
-uv run krystal-curator init && $EDITOR config.toml .env
-docker compose up -d --build
-docker compose logs -f watch
-docker compose exec watch krystal-curator status
-```
+**Docker (any host):** `make setup && make docker-up` · `make docker-logs` · `make docker-status` · `make docker-down`.
 `config.toml` is mounted read-only, secrets come from `.env`, history persists in the
 `krystal-data` volume, digests land in `./reports`. The healthcheck fails when the last
 tick is older than 3× the interval.
 
-**Linux, no Docker:** `deploy/krystal-watch.service` (systemd, `uv run --frozen`).
-**macOS:** `deploy/app.krystal-curator.watch.plist` (launchd, survives logins).
+**macOS (launchd):** `make install-mac` · `make logs-mac` · `make uninstall-mac`.
+**Linux (systemd, sudo):** `make install-linux` · `make logs-linux` · `make uninstall-linux`.
 
-Both read `config.toml` + `.env` from the working directory. Set `telegram = true` and
-`digest_hour` in `config.toml` so no flags are needed on the unit.
+Both templates in `deploy/` get this checkout's path, user and `uv` substituted in, and
+read `config.toml` + `.env` from it. Set `telegram = true` and `digest_hour` in
+`config.toml` so the unit needs no flags.
 
 ## Profiles
 
