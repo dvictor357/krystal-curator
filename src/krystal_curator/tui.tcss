@@ -1,0 +1,94 @@
+/* Bloomberg-style: black ground, amber chrome, white data. */
+Screen {
+    background: #000000;
+    color: #d8d8d8;
+}
+
+#topbar {
+    height: 1;
+    background: #ff9a00;
+    color: #000000;
+    text-style: bold;
+    padding: 0 1;
+}
+
+#body {
+    height: 1fr;
+}
+
+#table {
+    width: 1fr;
+    height: 1fr;
+    border: solid #a05e00;
+    border-title-color: #ffb000;
+    border-title-style: bold;
+    background: #000000;
+    scrollbar-color: #ff9a00;
+    scrollbar-background: #1a1a1a;
+}
+
+DataTable > .datatable--header {
+    background: #1a1000;
+    color: #ffb000;
+    text-style: bold;
+}
+DataTable > .datatable--cursor {
+    background: #3a2600;
+    color: #ffffff;
+}
+DataTable > .datatable--hover {
+    background: #1e1e1e;
+}
+DataTable > .datatable--fixed {
+    background: #000000;
+    color: #ffb000;
+}
+
+#detail {
+    width: 76;
+    height: 1fr;
+    border: solid #a05e00;
+    border-title-color: #ffb000;
+    border-title-style: bold;
+    padding: 0 1;
+    background: #000000;
+    overflow-y: auto;
+}
+
+#status {
+    height: 1;
+    background: #101010;
+    color: #ffb000;
+    padding: 0 1;
+}
+
+#find {
+    height: 3;
+    display: none;
+    border: solid #ff9a00;
+    background: #000000;
+    color: #ffffff;
+}
+#find.visible {
+    display: block;
+}
+
+Footer {
+    background: #101010;
+    color: #ffb000;
+}
+Footer > .footer--key {
+    background: #ff9a00;
+    color: #000000;
+    text-style: bold;
+}
+Footer > .footer--description {
+    color: #d8d8d8;
+}
+Footer > .footer--highlight {
+    background: #2a1c00;
+}
+Footer > .footer--highlight-key {
+    background: #ffd070;
+    color: #000000;
+}

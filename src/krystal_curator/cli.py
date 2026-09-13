@@ -1,0 +1,166 @@
+"""Entry point. `krystal-curator` opens the TUI; `krystal-curator scan` prints a table."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from rich import box
+from rich.console import Console
+from rich.table import Table
+
+from . import api
+from .models import ROBINHOOD
+from .profiles import PROFILE_ORDER, PROFILES
+
+
+def _common(ap: argparse.ArgumentParser) -> None:
+    ap.add_argument("--chain", type=int, default=ROBINHOOD, help="chainId (default Robinhood 4663)")
+    ap.add_argument(
+        "--profile",
+        choices=PROFILE_ORDER,
+        default="balanced",
+        help="risk profile (default balanced)",
+    )
+    ap.add_argument(
+        "--quote",
+        default="USDG",
+        help="only pools containing this token; 'any' disables (default USDG)",
+    )
+    ap.add_argument(
+        "--protocol",
+        action="append",
+        default=[],
+        help="restrict to protocol key(s); repeatable",
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(prog="krystal-curator", description="Krystal LP pool screener")
+    sub = ap.add_subparsers(dest="cmd")
+
+    tui = sub.add_parser("tui", help="interactive terminal (default)")
+    _common(tui)
+
+    scan = sub.add_parser("scan", help="print ranked table, optional CSV")
+    _common(scan)
+    scan.add_argument("--top", type=int, default=25)
+    scan.add_argument("--csv", type=Path, default=None)
+    scan.add_argument(
+        "--tx",
+        action="store_true",
+        help=f"fetch 24h tx count for the top rows via Cloud API (needs ${api.CLOUD_KEY_ENV}; costs credits)",
+    )
+    return ap
+
+
+def run_scan(args: argparse.Namespace) -> int:
+    from .scoring import curate
+    from .tui import write_csv
+
+    con = Console(width=None if sys.stdout.isatty() else 180)
+    prof = PROFILES[args.profile]
+    quote = None if args.quote.lower() == "any" else args.quote
+    protos = set(args.protocol) or None
+    try:
+        pools = api.fetch_pools(args.chain)
+    except api.KrystalError as e:
+        con.print(f"[red]{e}[/red]")
+        return 2
+    rows = curate(pools, prof, quote=quote, protocols=protos)[: args.top]
+    if not rows:
+        con.print("[red]no pool passes this profile; try --profile aggressive or --quote any[/red]")
+        return 1
+
+    if args.tx:
+        key = api.cloud_key()
+        if not key:
+            con.print(f"[yellow]--tx ignored: ${api.CLOUD_KEY_ENV} not set[/yellow]")
+        else:
+            for s in rows:
+                s.pool.tx24 = api.fetch_tx_count_24h(s.pool, key)
+
+    t = Table(
+        title=f"{prof.name}  chain {args.chain}  quote {quote or 'any'}  {len(pools)} → {len(rows)}",
+        header_style="bold #ffb000",
+        border_style="#a05e00",
+        box=box.SIMPLE_HEAD,
+        pad_edge=False,
+    )
+    for c in (
+        "#",
+        "PAIR",
+        "PROTO",
+        "TIER%",
+        "TVL",
+        "VOL24",
+        "FEE24",
+        "Y24%",
+        "Y7D%",
+        "V/TVL",
+        "CONS",
+        "σ%",
+        "DD24",
+        "SCORE",
+        "RK",
+        "FLAGS",
+    ):
+        t.add_column(c, justify="right" if c not in ("PAIR", "PROTO", "FLAGS") else "left")
+    if args.tx:
+        t.add_column("TX24", justify="right")
+    for i, s in enumerate(rows, 1):
+        p = s.pool
+        cells = [
+            str(i),
+            p.pair,
+            p.protocol,
+            f"{p.fee_tier_pct:.2f}",
+            f"{p.tvl:,.0f}",
+            f"{p.s24h.volume:,.0f}",
+            f"{p.s24h.fee:,.0f}",
+            f"{p.fee_yield_24h * 100:.2f}",
+            f"{p.fee_yield_7d_daily * 100:.2f}",
+            f"{p.turnover_24h:.1f}",
+            f"{p.consistency:.2f}",
+            f"{p.volatility:.1f}",
+            f"{p.drawdown24h:.1f}",
+            f"{s.score:.1f}",
+            s.grade,
+            " ".join(s.flags),
+        ]
+        if args.tx:
+            cells.append("-" if p.tx24 is None else f"{p.tx24:,}")
+        t.add_row(*cells)
+    con.print(t)
+    con.print("[dim]URLs:[/dim]")
+    for i, s in enumerate(rows, 1):
+        con.print(f"[dim]{i:>3}[/dim] {s.pool.url}")
+
+    if args.csv:
+        write_csv(args.csv, rows)
+        con.print(f"saved {args.csv}")
+    return 0
+
+
+def run_tui(args: argparse.Namespace) -> int:
+    from .tui import CuratorApp
+
+    quote = None if args.quote.lower() == "any" else args.quote
+    CuratorApp(
+        chain_id=args.chain,
+        profile=args.profile,
+        quote=quote,
+        protocols=set(args.protocol) or None,
+    ).run()
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = build_parser()
+    args = ap.parse_args(argv)
+    if args.cmd == "scan":
+        return run_scan(args)
+    if args.cmd is None:
+        args = ap.parse_args(["tui", *(argv or sys.argv[1:])])
+    return run_tui(args)

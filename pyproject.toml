@@ -1,0 +1,30 @@
+[project]
+name = "krystal-curator"
+version = "0.1.0"
+description = "Krystal LP pool screener: risk profiles, fee/turnover scoring, Bloomberg-style TUI"
+readme = "README.md"
+authors = [
+    { name = "Dimas Victor", email = "dvictor.1357@outlook.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "textual>=8.2.8",
+]
+
+[project.scripts]
+krystal-curator = "krystal_curator:main"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.7",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
