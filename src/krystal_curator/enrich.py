@@ -15,7 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
-from platformdirs import user_cache_dir
+
+from .config import data_dir
 
 DEXSCREENER_TOKENS = "https://api.dexscreener.com/tokens/v1"
 
@@ -34,7 +35,6 @@ DEX_CHAIN: dict[int, str] = {
 }
 
 _HEADERS = {"Accept": "application/json", "User-Agent": "Mozilla/5.0 krystal-curator/0.1"}
-_CACHE_DIR = Path(user_cache_dir("krystal-curator"))
 _META_TTL = 6 * 3600
 
 
@@ -87,8 +87,8 @@ class TokenInfo:
 class TokenMeta:
     """Thread-safe memo of TokenInfo per (chain, address) + logo bytes on disk."""
 
-    def __init__(self, cache_dir: Path = _CACHE_DIR) -> None:
-        self._dir = cache_dir
+    def __init__(self, cache_dir: Path | None = None) -> None:
+        self._dir = cache_dir or data_dir() / "cache"
         self._meta: dict[str, TokenInfo] = {}
         self._lock = threading.Lock()
         (self._dir / "logos").mkdir(parents=True, exist_ok=True)

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import api
 from .analytics import report_markdown
+from .config import Config
 from .models import CHAIN_SLUG
 from .monitor import Monitor
 from .notify import Telegram
@@ -29,11 +30,16 @@ def run_watch(
     telegram: bool,
     digest_hour: int | None,
     once: bool = False,
+    config: Config | None = None,
 ) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    cfg = config or Config()
     store = Store()
-    mon = Monitor(store, profile=PROFILES[profile])
+    mon = Monitor(
+        store, profile=PROFILES[profile], alerts=cfg.alerts, snapshot_days=cfg.snapshot_days
+    )
+    ticks = 0
     tg = Telegram.from_env() if telegram else None
     if telegram and tg is None:
         log.error("telegram requested but TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing")
@@ -87,6 +93,26 @@ def run_watch(
             )
             for a in alerts:
                 log.warning("%s: %s", a.title, a.text)
+            ticks += 1
+            store.kv_set(
+                "watch.heartbeat",
+                {
+                    "ts": time.time(),
+                    "interval": interval,
+                    "ticks": ticks,
+                    "pools": len(pools),
+                    "vaults": len(mon.vaults),
+                    "open": len(opens),
+                    "oor": oor,
+                    "telegram": bool(tg),
+                    "chain": chain_id,
+                },
+            )
+            if alerts:
+                prev = store.kv_get("watch.last_alerts") or []
+                when = datetime.now(UTC).strftime("%m-%d %H:%M")
+                prev += [{"when": when, "title": a.title, "text": a.text} for a in alerts]
+                store.kv_set("watch.last_alerts", prev[-50:])
             if tg and alerts:
                 icon = {"error": "🔴", "warning": "🟠", "information": "🟢"}
                 tg.send(

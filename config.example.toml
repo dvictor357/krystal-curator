@@ -1,0 +1,26 @@
+# krystal-curator configuration. Precedence: CLI flag > env var > this file > default.
+# Secrets (KRYSTAL_CLOUD_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) go in .env, not here.
+
+chain = 4663            # Robinhood. 8453 base, 1 ethereum, 56 bsc, 42161 arbitrum
+quote = "USDG"          # only pools containing this token; "any" to disable
+profile = "balanced"    # conservative | balanced | aggressive | degen
+protocols = []          # e.g. ["uniswapv4", "ramsescl"]; empty = all
+size = 50000            # your position size in USD for MY$/D, NET$/D, SHARE
+wallet = ""             # 0x… for the positions view and monitoring (or KRYSTAL_WALLET)
+
+refresh = 300           # TUI auto-refresh seconds, 0 = off
+images = ""             # "" auto-detect | tgp | sixel | halfcell | unicode | off
+
+interval = 300          # `watch` daemon seconds between ticks
+telegram = false        # deliver alerts to Telegram (needs .env token + chat id)
+# digest_hour = 0       # UTC hour to write + send the daily vault report
+
+rotate_cost_pct = 0.3   # % of value assumed lost when rotating a position
+snapshot_days = 14      # how long local pool history is kept
+
+[alerts]
+pos_pnl_drop = 0.05     # alert when a position loses this fraction of its value between ticks
+edge_sigma = 0.5        # alert when the nearest range edge is closer than this many daily σ
+watch_tvl_move = 30     # % TVL move in an hour on a starred pool
+watch_fee_drop = -50    # % fee24 change on a starred pool
+watch_drawdown = -30    # % drawdown on a starred pool

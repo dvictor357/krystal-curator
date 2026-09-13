@@ -18,12 +18,13 @@ class Edge:
     dist_pct: float  # % move from current price to reach it (positive)
     sigmas: float | None  # dist / daily σ
     days: float | None  # expected days for a random walk to travel that far
+    alert_sigma: float = EDGE_ALERT_SIGMA
 
     @property
     def urgency(self) -> str:
         if self.sigmas is None:
             return "?"
-        if self.sigmas < EDGE_ALERT_SIGMA:
+        if self.sigmas < self.alert_sigma:
             return "CRITICAL"
         if self.sigmas < 1.0:
             return "close"
@@ -49,23 +50,25 @@ class Advice:
     @property
     def alert(self) -> bool:
         n = self.nearest
-        return n is not None and n.sigmas is not None and n.sigmas < EDGE_ALERT_SIGMA
+        return n is not None and n.sigmas is not None and n.sigmas < n.alert_sigma
 
 
-def _edge(name: str, price: float, cur: float, sigma_pct: float | None) -> Edge:
+def _edge(name: str, price: float, cur: float, sigma_pct: float | None, alert_sigma: float) -> Edge:
     dist = abs(price - cur) / cur * 100 if cur > 0 else 0.0
     if sigma_pct and sigma_pct > 0:
         s = dist / sigma_pct
-        return Edge(name, price, dist, s, s * s)
-    return Edge(name, price, dist, None, None)
+        return Edge(name, price, dist, s, s * s, alert_sigma)
+    return Edge(name, price, dist, None, None, alert_sigma)
 
 
-def advise(p: Position, sigma_daily_pct: float | None) -> Advice:
+def advise(
+    p: Position, sigma_daily_pct: float | None, *, alert_sigma: float = EDGE_ALERT_SIGMA
+) -> Advice:
     cur = p.current_price
     lower = upper = None
     if cur and p.min_price > 0 and p.max_price > p.min_price:
-        lower = _edge("lower", p.min_price, cur, sigma_daily_pct)
-        upper = _edge("upper", p.max_price, cur, sigma_daily_pct)
+        lower = _edge("lower", p.min_price, cur, sigma_daily_pct, alert_sigma)
+        upper = _edge("upper", p.max_price, cur, sigma_daily_pct, alert_sigma)
     days = max(p.age_days, 1e-6)
     fees = p.fees_total
     return Advice(

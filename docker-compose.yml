@@ -1,0 +1,18 @@
+services:
+  watch:
+    build: .
+    image: krystal-curator:latest
+    container_name: krystal-watch
+    restart: unless-stopped
+    env_file: .env                 # KRYSTAL_WALLET, TELEGRAM_*, KRYSTAL_CLOUD_KEY
+    volumes:
+      - ./config.toml:/config/config.toml:ro
+      - krystal-data:/data          # sqlite history + logo cache
+      - ./reports:/app/reports      # daily digests
+    command: ["watch"]             # flags override config.toml, e.g. ["watch", "--interval", "120"]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  krystal-data:

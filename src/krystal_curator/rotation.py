@@ -61,9 +61,10 @@ def plan(
     quote: str | None,
     current_pool: Pool | None,
     top: int = 8,
+    cost_pct: float = ROTATE_COST_PCT,
 ) -> Rotation:
     value = pos.value
-    cost = value * ROTATE_COST_PCT / 100
+    cost = value * cost_pct / 100
     cur_sim = simulate(current_pool, value) if current_pool else None
     current_net = realised_fee_day - (cur_sim.il_day if cur_sim else 0.0)
 

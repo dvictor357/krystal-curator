@@ -1,0 +1,9 @@
+.venv
+.git
+.env
+exports
+reports
+tests
+.github
+*.md
+!README.md

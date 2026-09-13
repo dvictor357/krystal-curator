@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from .advisor import advise
 from .analytics import idle_capital
+from .config import Alerts
 from .models import Pool
 from .positions import Position
 from .profiles import PROFILES, RiskProfile
@@ -20,10 +21,6 @@ from .vaults import Vault
 
 SNAPSHOT_EVERY = 15 * 60  # seconds between full-universe pool snapshots
 VAULT_SNAPSHOT_EVERY = 5 * 60  # seconds between vault equity snapshots
-POS_PNL_DROP = 0.05  # alert when a position's PnL falls by this fraction of its value
-WATCH_TVL_MOVE = 30  # % TVL move in an hour on a starred pool
-WATCH_FEE_DROP = -50  # % fee24 change on a starred pool
-WATCH_DRAWDOWN = -30  # % drawdown on a starred pool
 
 
 @dataclass(slots=True, frozen=True)
@@ -41,6 +38,8 @@ class Monitor:
     vaults: list[Vault] = field(default_factory=list)
     direct: list[Position] = field(default_factory=list)
     pos_state: dict[str, dict] = field(default_factory=dict)
+    alerts: Alerts = field(default_factory=Alerts)
+    snapshot_days: int = 14
 
     # ---- lookups --------------------------------------------------------
     def pool_for(self, address: str, alt: str = "") -> Scored | None:
@@ -77,11 +76,11 @@ class Monitor:
                 continue
             d = self.store.delta(p, hours=1)
             msgs = []
-            if d.tvl_pct is not None and abs(d.tvl_pct) >= WATCH_TVL_MOVE:
+            if d.tvl_pct is not None and abs(d.tvl_pct) >= self.alerts.watch_tvl_move:
                 msgs.append(f"TVL {d.tvl_pct:+.0f}%")
-            if d.fee24_pct is not None and d.fee24_pct <= WATCH_FEE_DROP:
+            if d.fee24_pct is not None and d.fee24_pct <= self.alerts.watch_fee_drop:
                 msgs.append(f"fee24 {d.fee24_pct:+.0f}%")
-            if p.drawdown24h <= WATCH_DRAWDOWN:
+            if p.drawdown24h <= self.alerts.watch_drawdown:
                 msgs.append(f"drawdown {p.drawdown24h:.0f}%")
             if msgs:
                 out.append(Alert("WATCH ALERT", f"★ {p.pair}: {', '.join(msgs)}", "warning"))
@@ -98,7 +97,7 @@ class Monitor:
             or (full and p.tvl >= floor.min_tvl and p.s24h.volume >= floor.min_vol24)
         ]
         self.store.record(keep)
-        self.store.prune(14)
+        self.store.prune(self.snapshot_days)
 
     # ---- positions ------------------------------------------------------
     def _position_alerts(self) -> list[Alert]:
@@ -109,7 +108,7 @@ class Monitor:
         for p in self.open_positions():
             sc = self.pool_for(p.pool_address, p.pool_alt)
             grade = sc.grade if sc else "?"
-            adv = advise(p, self.sigma_for(p))
+            adv = advise(p, self.sigma_for(p), alert_sigma=self.alerts.edge_sigma)
             prev = self.pos_state.get(p.id)
             label = f"{p.vault or 'wallet'} {p.pair}"
             if not p.in_range and (first or (prev and prev["in_range"])):
@@ -129,7 +128,7 @@ class Monitor:
                 out.append(
                     Alert("POOL DECAY", f"{label}: pool grade {prev['grade']} → {grade}", "warning")
                 )
-            if prev and p.value > 0 and (prev["pnl"] - p.pnl) / p.value >= POS_PNL_DROP:
+            if prev and p.value > 0 and (prev["pnl"] - p.pnl) / p.value >= self.alerts.pos_pnl_drop:
                 out.append(
                     Alert(
                         "PNL DROP", f"{label}: PnL {prev['pnl']:+,.0f}$ → {p.pnl:+,.0f}$", "warning"

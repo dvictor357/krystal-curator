@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- macOS launchd agent. Install:
+       cp deploy/app.krystal-curator.watch.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/app.krystal-curator.watch.plist
+     Edit WorkingDirectory and the uv path (`which uv`). -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>app.krystal-curator.watch</string>
+  <key>WorkingDirectory</key><string>/Users/you/Projects/web3/krystal-curator</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/uv</string>
+    <string>run</string><string>--frozen</string>
+    <string>krystal-curator</string><string>watch</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/krystal-watch.log</string>
+  <key>StandardErrorPath</key><string>/tmp/krystal-watch.log</string>
+</dict>
+</plist>

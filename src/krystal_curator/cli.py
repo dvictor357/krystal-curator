@@ -11,63 +11,69 @@ from rich.console import Console
 from rich.table import Table
 
 from . import api, notify
+from .config import Config
+from .config import load as load_config
 from .env import load_dotenv
-from .models import ROBINHOOD
 from .position import simulate
 from .profiles import PROFILE_ORDER, PROFILES
 
 
-def _common(ap: argparse.ArgumentParser) -> None:
-    ap.add_argument("--chain", type=int, default=ROBINHOOD, help="chainId (default Robinhood 4663)")
+def _common(ap: argparse.ArgumentParser, cfg: Config) -> None:
+    """Shared flags; defaults come from config.toml / env so flags only override."""
+    ap.add_argument("--chain", type=int, default=cfg.chain, help=f"chainId (default {cfg.chain})")
     ap.add_argument(
         "--profile",
         choices=PROFILE_ORDER,
-        default="balanced",
-        help="risk profile (default balanced)",
+        default=cfg.profile,
+        help=f"risk profile (default {cfg.profile})",
     )
     ap.add_argument(
         "--quote",
-        default="USDG",
-        help="only pools containing this token; 'any' disables (default USDG)",
+        default=cfg.quote,
+        help=f"only pools containing this token; 'any' disables (default {cfg.quote})",
     )
     ap.add_argument(
         "--protocol",
         action="append",
-        default=[],
-        help="restrict to protocol key(s); repeatable",
+        default=None,
+        help="restrict to protocol key(s); repeatable"
+        + (f" (default {cfg.protocols})" if cfg.protocols else ""),
     )
     ap.add_argument(
-        "--size", type=float, default=50_000, help="your position size in USD (default 50000)"
+        "--size",
+        type=float,
+        default=cfg.size,
+        help=f"your position size in USD (default {cfg.size:,.0f})",
     )
     ap.add_argument(
         "--wallet",
-        default=None,
-        help=f"wallet for the positions view (or ${api.WALLET_ENV} / .env); needs ${api.CLOUD_KEY_ENV}",
+        default=cfg.wallet or None,
+        help=f"wallet for positions + monitoring (default from config / ${api.WALLET_ENV})",
     )
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(cfg: Config) -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="krystal-curator", description="Krystal LP pool screener")
+    ap.add_argument("--config", default=None, help="path to config.toml (default: auto-discover)")
     sub = ap.add_subparsers(dest="cmd")
 
     tui = sub.add_parser("tui", help="interactive terminal (default)")
-    _common(tui)
+    _common(tui, cfg)
     tui.add_argument(
         "--refresh",
         type=int,
-        default=300,
-        help="auto-refresh every N seconds (0 = off, default 300)",
+        default=cfg.refresh,
+        help=f"auto-refresh every N seconds (0 = off, default {cfg.refresh})",
     )
     tui.add_argument(
         "--images",
         choices=["auto", "tgp", "sixel", "halfcell", "unicode", "off"],
-        default=None,
-        help="logo renderer; default auto (Kitty/Sixel graphics), halfcell on Warp. "
-        "Also via KRYSTAL_IMAGE env.",
+        default=cfg.images or None,
+        help="logo renderer; default auto (Kitty/Sixel graphics), halfcell on Warp.",
     )
 
     scan = sub.add_parser("scan", help="print ranked table, optional CSV")
-    _common(scan)
+    _common(scan, cfg)
     scan.add_argument("--top", type=int, default=25)
     scan.add_argument("--csv", type=Path, default=None)
     scan.add_argument(
@@ -76,19 +82,23 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"fetch 24h tx count for the top rows via Cloud API (needs ${api.CLOUD_KEY_ENV}; costs credits)",
     )
     watch = sub.add_parser("watch", help="headless monitor loop: snapshots + alerts (Telegram)")
-    _common(watch)
+    _common(watch, cfg)
     watch.add_argument(
-        "--interval", type=int, default=300, help="seconds between ticks (default 300)"
+        "--interval",
+        type=int,
+        default=cfg.interval,
+        help=f"seconds between ticks (default {cfg.interval})",
     )
     watch.add_argument(
         "--telegram",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=cfg.telegram,
         help=f"send alerts via Telegram (needs ${notify.TOKEN_ENV} and ${notify.CHAT_ENV})",
     )
     watch.add_argument(
         "--digest-hour",
         type=int,
-        default=None,
+        default=cfg.digest_hour,
         help="UTC hour to write (and send) the daily vault report, e.g. 0",
     )
     watch.add_argument("--once", action="store_true", help="one tick then exit (cron mode)")
@@ -96,12 +106,116 @@ def build_parser() -> argparse.ArgumentParser:
     bt = sub.add_parser(
         "backtest", help="does the score predict forward fee yield? (local history)"
     )
-    _common(bt)
+    _common(bt, cfg)
     bt.add_argument(
         "--horizon", type=float, default=24, help="hours ahead to evaluate (default 24)"
     )
     bt.add_argument("--days", type=float, default=14, help="history window in days (default 14)")
+
+    init = sub.add_parser("init", help="write config.toml and .env templates here")
+    init.add_argument("--force", action="store_true", help="overwrite existing files")
+    sub.add_parser("config", help="show the effective configuration and where it came from")
+    sub.add_parser("status", help="daemon heartbeat, db size, last alerts")
     return ap
+
+
+def run_init(args: argparse.Namespace) -> int:
+    from .config import write_templates
+
+    con = Console()
+    made = write_templates(Path.cwd(), force=args.force)
+    if not made:
+        con.print("[yellow]config.toml and .env already exist (use --force to overwrite)[/yellow]")
+        return 1
+    for p in made:
+        con.print(f"wrote [bold]{p.name}[/bold]")
+    con.print(
+        "edit them, then: [bold]uv run krystal-curator[/bold]  or  [bold]uv run krystal-curator watch[/bold]"
+    )
+    return 0
+
+
+def run_config(cfg: Config) -> int:
+    from dataclasses import fields
+
+    from .config import data_dir
+
+    con = Console()
+    con.print(
+        f"[bold #ffb000]config[/]: {cfg.source or 'built-in defaults (no config.toml found)'}"
+    )
+    con.print(f"[bold #ffb000]data dir[/]: {data_dir()}")
+    t = Table(box=box.SIMPLE_HEAD, header_style="bold #ffb000", pad_edge=False)
+    t.add_column("KEY")
+    t.add_column("VALUE")
+    for f in fields(Config):
+        if f.name in ("source", "alerts"):
+            continue
+        v = getattr(cfg, f.name)
+        if f.name == "wallet" and v:
+            v = f"{v[:6]}…{v[-4:]}"
+        t.add_row(f.name, str(v))
+    for f in fields(cfg.alerts):
+        t.add_row(f"alerts.{f.name}", str(getattr(cfg.alerts, f.name)))
+    con.print(t)
+    have = {
+        "KRYSTAL_CLOUD_KEY": bool(api.cloud_key()),
+        "TELEGRAM_BOT_TOKEN": bool(__import__("os").environ.get(notify.TOKEN_ENV)),
+        "TELEGRAM_CHAT_ID": bool(__import__("os").environ.get(notify.CHAT_ENV)),
+    }
+    con.print(
+        "secrets: "
+        + "   ".join(
+            f"{k} {'[green]set[/green]' if v else '[dim]unset[/dim]'}" for k, v in have.items()
+        )
+    )
+    return 0
+
+
+def run_status() -> int:
+    import time
+
+    from .config import data_dir
+    from .store import Store, default_db
+
+    con = Console()
+    db = default_db()
+    if not db.exists():
+        con.print(f"[yellow]no database yet at {db}[/yellow]")
+        return 1
+    st = Store(db)
+    hb = st.kv_get("watch.heartbeat") or {}
+    size_mb = db.stat().st_size / 1e6
+    con.print(
+        f"[bold #ffb000]db[/]: {db} ({size_mb:.1f} MB)   [bold #ffb000]data dir[/]: {data_dir()}"
+    )
+    if hb:
+        age = time.time() - float(hb.get("ts", 0))
+        stale = age > 3 * float(hb.get("interval", 300))
+        con.print(
+            f"[bold #ffb000]watch[/]: last tick {age / 60:.1f} min ago "
+            + ("[red](STALE)[/red]" if stale else "[green](alive)[/green]")
+            + f"   pools {hb.get('pools')}   vaults {hb.get('vaults')}   open {hb.get('open')} "
+            f"(OOR {hb.get('oor')})   ticks {hb.get('ticks')}   telegram {hb.get('telegram')}"
+        )
+        last = st.kv_get("watch.last_alerts") or []
+        if last:
+            con.print("[bold #ffb000]last alerts[/]:")
+            for a in last[-10:]:
+                con.print(f"  {a.get('when', '')}  {a.get('title')}: {a.get('text')}")
+    else:
+        con.print("[dim]no daemon heartbeat recorded (run `krystal-curator watch`)[/dim]")
+    with st._lock:
+        n_snap = st._db.execute("SELECT COUNT(*), MIN(ts), MAX(ts) FROM snapshots").fetchone()
+        n_vault = st._db.execute("SELECT COUNT(*) FROM vault_snapshots").fetchone()[0]
+        n_seen = st._db.execute("SELECT COUNT(*) FROM pools_seen").fetchone()[0]
+        n_watch = st._db.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0]
+    span = (n_snap[2] - n_snap[1]) / 3600 if n_snap[1] else 0
+    con.print(
+        f"[bold #ffb000]history[/]: {n_snap[0]:,} pool snapshots over {span:.0f}h   "
+        f"{n_vault} vault snapshots   {n_seen} pools seen   {n_watch} starred"
+    )
+    return 0
 
 
 def run_backtest(args: argparse.Namespace) -> int:
@@ -296,7 +410,7 @@ def run_scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_tui(args: argparse.Namespace) -> int:
+def run_tui(args: argparse.Namespace, cfg: Config) -> int:
     from .tui import CuratorApp
 
     quote = None if args.quote.lower() == "any" else args.quote
@@ -309,14 +423,29 @@ def run_tui(args: argparse.Namespace) -> int:
         size=args.size,
         refresh_seconds=args.refresh,
         wallet=args.wallet,
+        config=cfg,
     ).run()
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
-    ap = build_parser()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # --config must be known before defaults are built
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", default=None)
+    pre_args, _ = pre.parse_known_args(argv)
+    cfg = load_config(pre_args.config)
+    ap = build_parser(cfg)
     args = ap.parse_args(argv)
+    if getattr(args, "protocol", None) is None and hasattr(args, "protocol"):
+        args.protocol = list(cfg.protocols)
+    if args.cmd == "init":
+        return run_init(args)
+    if args.cmd == "config":
+        return run_config(cfg)
+    if args.cmd == "status":
+        return run_status()
     if args.cmd == "scan":
         return run_scan(args)
     if args.cmd == "backtest":
@@ -332,7 +461,10 @@ def main(argv: list[str] | None = None) -> int:
             telegram=args.telegram,
             digest_hour=args.digest_hour,
             once=args.once,
+            config=cfg,
         )
     if args.cmd is None:
-        args = ap.parse_args(["tui", *(argv or sys.argv[1:])])
-    return run_tui(args)
+        args = ap.parse_args(["tui", *argv])
+        if args.protocol is None:
+            args.protocol = list(cfg.protocols)
+    return run_tui(args, cfg)

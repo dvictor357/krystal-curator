@@ -30,6 +30,7 @@ from . import api
 from .advisor import Advice, advise, price_ladder
 from .analytics import idle_capital, real_roi, report_markdown, track_record
 from .api import KrystalError
+from .config import Config
 from .enrich import TokenInfo, TokenMeta
 from .models import Pool
 from .monitor import Monitor
@@ -37,7 +38,7 @@ from .position import simulate
 from .positions import POSITIONS_UNITS, Position, fetch_positions
 from .profiles import PROFILES, RiskProfile
 from .radar import render_radar
-from .rotation import ROTATE_COST_PCT, Rotation, plan
+from .rotation import Rotation, plan
 from .scoring import Scored, curate, score_pool
 from .store import Delta, Store, sparkline
 from .vaults import Vault, fetch_vaults
@@ -803,7 +804,7 @@ class PositionsScreen(Screen[str | None]):
                     Text(rot.verdict, style=verdict_style),
                     Text(
                         f"same {p.value:,.0f}$ in {c.profile.name.lower()} pools (1-4 to change), "
-                        f"switch cost {rot.cost:,.0f}$ ({ROTATE_COST_PCT}%), x = full list",
+                        f"switch cost {rot.cost:,.0f}$ ({self.config.rotate_cost_pct}%), x = full list",
                         style="dim",
                     ),
                     r,
@@ -947,8 +948,10 @@ class CuratorApp(App[None]):
         size: float = 50_000,
         refresh_seconds: int = 300,
         wallet: str | None = None,
+        config: Config | None = None,
     ) -> None:
         super().__init__()
+        self.config = config or Config()
         self.wallet = wallet or api.wallet()
         self.units_used = 0  # Cloud API units spent this session
         self.positions: list[Position] = []  # direct wallet positions (Cloud API)
@@ -959,7 +962,12 @@ class CuratorApp(App[None]):
         self.watch_only = False
         self.store = Store()
         self._hist_cache: dict[str, tuple[Delta, str]] = {}
-        self.monitor = Monitor(self.store, profile=PROFILES[profile])
+        self.monitor = Monitor(
+            self.store,
+            profile=PROFILES[profile],
+            alerts=self.config.alerts,
+            snapshot_days=self.config.snapshot_days,
+        )
         self._timer = None
         self.image_mode = pick_image_mode(image_mode)
         self.image_cls = IMAGE_MODES[self.image_mode]
@@ -1058,7 +1066,7 @@ class CuratorApp(App[None]):
         return sc.pool.volatility if sc else None
 
     def advice_for(self, p: Position) -> Advice:
-        return advise(p, self.sigma_for(p))
+        return advise(p, self.sigma_for(p), alert_sigma=self.config.alerts.edge_sigma)
 
     def rotation_for(self, p: Position, top: int = 8) -> Rotation:
         sc = self.pool_for(p.pool_address, p.pool_alt)
@@ -1070,6 +1078,7 @@ class CuratorApp(App[None]):
             quote=self.quote,
             current_pool=sc.pool if sc else None,
             top=top,
+            cost_pct=self.config.rotate_cost_pct,
         )
 
     def _hist(self, p: Pool) -> tuple[Delta, str]:

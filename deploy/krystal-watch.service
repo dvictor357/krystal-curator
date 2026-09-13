@@ -1,0 +1,21 @@
+# systemd unit (Linux host, no Docker). Install:
+#   sudo cp deploy/krystal-watch.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now krystal-watch
+# Edit User/WorkingDirectory. Secrets come from .env in WorkingDirectory.
+[Unit]
+Description=krystal-curator watch daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=curator
+WorkingDirectory=/opt/krystal-curator
+ExecStart=/usr/local/bin/uv run --frozen krystal-curator watch
+Restart=always
+RestartSec=15
+Environment=PYTHONUNBUFFERED=1
+# Environment=KRYSTAL_DATA_DIR=/var/lib/krystal-curator
+
+[Install]
+WantedBy=multi-user.target

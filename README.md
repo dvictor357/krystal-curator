@@ -7,14 +7,29 @@ yield + turnover + consistency, and shows the result in a Bloomberg-style termin
 Default universe: Robinhood chain (4663), pools quoted in **USDG**, all protocols
 (Uniswap v2/v3/v4, Ramses CL).
 
-## Install / run
+## Quick start
 
 ```sh
 uv sync
-uv run krystal-curator                 # TUI, balanced profile, USDG pairs
+uv run krystal-curator init        # writes config.toml + .env templates
+$EDITOR config.toml .env           # wallet, profile, size, telegram…
+uv run krystal-curator             # TUI
+uv run krystal-curator config      # show effective settings + where they came from
+```
+
+Precedence: **CLI flag > env var (`KRYSTAL_*`) > `config.toml` > default**. Secrets
+(`KRYSTAL_WALLET` optional here, `KRYSTAL_CLOUD_KEY`, `TELEGRAM_*`) live in `.env`;
+`config.toml` holds everything else (see `config.example.toml`) and is looked up in
+`--config`, `$KRYSTAL_CONFIG`, `./config.toml`, then the user config dir.
+`KRYSTAL_DATA_DIR` moves the sqlite db / cache (used by the container).
+
+Commands: `tui` (default) · `scan` · `watch` · `backtest` · `init` · `config` · `status`.
+
+```sh
 uv run krystal-curator --profile aggressive
 uv run krystal-curator scan --top 20 --profile conservative --csv out.csv
-uv run krystal-curator scan --quote any --protocol ramsescl
+uv run krystal-curator watch --telegram --digest-hour 0
+uv run krystal-curator status      # daemon heartbeat, last alerts, history size
 ```
 
 TUI keys: `1-4` profile · `u` toggle USDG-only · `p` cycle protocol · `s` next sort column · `S` asc/desc · click a header to sort by it · `*` watch/unwatch · `W` watched only · `a` auto-refresh on/off · `$` position size ·
@@ -22,84 +37,28 @@ TUI keys: `1-4` profile · `u` toggle USDG-only · `p` cycle protocol · `s` nex
 
 The `LINKS` column shows which socials each pool's tokens have (sortable).
 
-The detail panel shows both token logos and clickable social links. Logo renderer: `--images auto|tgp|sixel|halfcell|unicode|off` or `KRYSTAL_IMAGE=…`. `auto` uses Kitty/Sixel graphics (Ghostty, Kitty, WezTerm, iTerm2); Warp is detected and gets coloured half-blocks since it does not render graphics escapes. Logos and links come from DexScreener (no key), cached under the user cache dir for 6h.
+The detail panel shows both token logos and clickable social links. Logo renderer: `--images auto|tgp|sixel|halfcell|unicode|off` or `KRYSTAL_IMAGE=…`. `auto` uses Kitty/Sixel graphics (Ghostty, Kitty, WezTerm, iTerm2); Warp is detected and gets coloured half-blocks since it does not render graphics escapes.
 
-## Watchlist, history, alerts
+## Deployment
 
-Every refresh is snapshotted to a local sqlite db (`~/Library/Application Support/krystal-curator`
-on macOS): watched pools on every refresh, the wider universe every 15 min, kept 14 days.
-That powers the `ΔFEE` column (fee24 vs ~24h ago), the `TREND` sparkline, the HISTORY line
-in the detail panel (fee + TVL sparklines, Δ tvl/fee/vol), and watch alerts: a toast when a
-starred pool's TVL moves ≥30 % in an hour, fee24 halves, or drawdown passes −30 %.
-`--refresh 300` sets the auto-refresh period (0 = off). Cursor stays on the same pool across
-refreshes and re-sorts.
+The daemon is the thing to deploy; the TUI is a client over the same sqlite db.
 
-## Headless monitor + Telegram (`watch`)
-
+**Docker (any host):**
 ```sh
-uv run krystal-curator watch --interval 300 --telegram --digest-hour 0
-uv run krystal-curator watch --once            # one tick, for cron
+uv run krystal-curator init && $EDITOR config.toml .env
+docker compose up -d --build
+docker compose logs -f watch
+docker compose exec watch krystal-curator status
 ```
+`config.toml` is mounted read-only, secrets come from `.env`, history persists in the
+`krystal-data` volume, digests land in `./reports`. The healthcheck fails when the last
+tick is older than 3× the interval.
 
-Same refresh, snapshots and alert rules as the TUI, without a terminal. Alerts go to stdout
-and, with `--telegram`, to a Telegram chat. Put in `.env`:
+**Linux, no Docker:** `deploy/krystal-watch.service` (systemd, `uv run --frozen`).
+**macOS:** `deploy/app.krystal-curator.watch.plist` (launchd, survives logins).
 
-```
-TELEGRAM_BOT_TOKEN=123456:ABC…     # from @BotFather
-TELEGRAM_CHAT_ID=123456789         # your user id (message the bot, then GET /getUpdates) or a group id
-```
-
-`--digest-hour H` writes the vault report at that UTC hour and sends it as a file.
-
-Run it under launchd on macOS (keeps running across logins):
-
-```xml
-<!-- ~/Library/LaunchAgents/app.krystal-curator.watch.plist -->
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>app.krystal-curator.watch</string>
-  <key>WorkingDirectory</key><string>/Users/you/Projects/web3/krystal-curator</string>
-  <key>ProgramArguments</key><array>
-    <string>/opt/homebrew/bin/uv</string><string>run</string><string>krystal-curator</string>
-    <string>watch</string><string>--telegram</string><string>--digest-hour</string><string>0</string>
-  </array>
-  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/krystal-watch.log</string>
-  <key>StandardErrorPath</key><string>/tmp/krystal-watch.log</string>
-</dict></plist>
-```
-
-`launchctl load ~/Library/LaunchAgents/app.krystal-curator.watch.plist`. The TUI and the
-daemon share the same local db, so history built by one shows in the other.
-
-## Backtest (`backtest`)
-
-```sh
-uv run krystal-curator backtest --horizon 24 --days 14
-```
-
-Uses only the local snapshot history. For every refresh time T with a snapshot ~horizon
-later, scores each pool as it looked at T and compares with the fee yield it delivered at
-T+horizon: Spearman rank correlation per profile, top vs bottom decile forward yield, mean
-forward yield of STEADY / FADING / SPIKE pools, and per-component correlations (which axes
-actually predict). With a wallet it also compares the σ²/8 IL model against the realised
-price PnL of your closed vault trades. Needs a day or two of TUI / `watch` history first.
-
-## Position simulator
-
-`--size 50000` (or `$` in the TUI) sets your position size. Every row then shows what *you*
-would earn, not the pool headline:
-
-- `MY$/D` – pool fee24 × your share, where share = size / (tvl + size) (dilution-adjusted)
-- `SHARE` – your fraction of the pool after entering; ≥25 % flagged (you become the pool)
-- `NET$/D` – `MY$/D` minus an impermanent-loss estimate of σ²/8 per day (full-range
-  lognormal approximation, σ = Krystal `priceVolatility` treated as daily)
-
-The detail panel adds APR at your size, 7d-basis fee, fee/IL coverage ratio, a suggested
-±range that holds 68 % / 95 % of 7-day price outcomes (σ√7, 2σ√7), and how many days of
-fees cover a 2σ move. Concentrated ranges scale fees and IL by roughly the same factor, so
-the fee/IL ratio is the pool-selection signal; the range is the position-sizing one.
+Both read `config.toml` + `.env` from the working directory. Set `telegram = true` and
+`digest_hour` in `config.toml` so no flags are needed on the unit.
 
 ## Profiles
 
@@ -174,41 +133,20 @@ The top bar counts units spent. `scan --tx` uses the same key for 24h transactio
 ## Headless monitor + Telegram (`watch`)
 
 ```sh
-uv run krystal-curator watch --interval 300 --telegram --digest-hour 0
+uv run krystal-curator watch                   # uses config.toml (interval, telegram, digest_hour)
 uv run krystal-curator watch --once            # one tick, for cron
 ```
 
 Same refresh, snapshots and alert rules as the TUI, without a terminal. Alerts go to stdout
-and, with `--telegram`, to a Telegram chat. Put in `.env`:
+and, with `telegram = true`, to a Telegram chat:
 
 ```
 TELEGRAM_BOT_TOKEN=123456:ABC…     # from @BotFather
 TELEGRAM_CHAT_ID=123456789         # your user id (message the bot, then GET /getUpdates) or a group id
 ```
 
-`--digest-hour H` writes the vault report at that UTC hour and sends it as a file.
-
-Run it under launchd on macOS (keeps running across logins):
-
-```xml
-<!-- ~/Library/LaunchAgents/app.krystal-curator.watch.plist -->
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>app.krystal-curator.watch</string>
-  <key>WorkingDirectory</key><string>/Users/you/Projects/web3/krystal-curator</string>
-  <key>ProgramArguments</key><array>
-    <string>/opt/homebrew/bin/uv</string><string>run</string><string>krystal-curator</string>
-    <string>watch</string><string>--telegram</string><string>--digest-hour</string><string>0</string>
-  </array>
-  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/krystal-watch.log</string>
-  <key>StandardErrorPath</key><string>/tmp/krystal-watch.log</string>
-</dict></plist>
-```
-
-`launchctl load ~/Library/LaunchAgents/app.krystal-curator.watch.plist`. The TUI and the
-daemon share the same local db, so history built by one shows in the other.
+`digest_hour` writes the vault report at that UTC hour and sends it as a file. Alert
+thresholds are in the `[alerts]` table of `config.toml`. `status` shows the heartbeat.
 
 ## Backtest (`backtest`)
 

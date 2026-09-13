@@ -11,3 +11,4 @@ wheels/
 exports/
 .env
 reports/
+config.toml

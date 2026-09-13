@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from platformdirs import user_data_dir
-
+from .config import data_dir
 from .models import Pool
 
-_DB = Path(user_data_dir("krystal-curator")) / "curator.sqlite3"
+
+def default_db() -> Path:
+    return data_dir() / "curator.sqlite3"
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS snapshots (
     ts        INTEGER NOT NULL,
@@ -35,6 +39,10 @@ CREATE TABLE IF NOT EXISTS pools_seen (
     address   TEXT    NOT NULL,
     first_ts  INTEGER NOT NULL,
     PRIMARY KEY (chain_id, address)
+);
+CREATE TABLE IF NOT EXISTS kv (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS watchlist (
     chain_id  INTEGER NOT NULL,
@@ -87,7 +95,8 @@ def _pct(now: float, then: float) -> float | None:
 
 
 class Store:
-    def __init__(self, path: Path = _DB) -> None:
+    def __init__(self, path: Path | None = None) -> None:
+        path = path or default_db()
         path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path, check_same_thread=False)
         self._db.executescript(_SCHEMA)
@@ -182,6 +191,19 @@ class Store:
             fee24_pct=_pct(p.s24h.fee, fee24),
             vol24_pct=_pct(p.s24h.volume, vol24),
         )
+
+    # ---- key/value (daemon heartbeat, misc) ---------------------------
+    def kv_set(self, key: str, value: object) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO kv VALUES (?, ?)", (key, json.dumps(value, default=str))
+            )
+            self._db.commit()
+
+    def kv_get(self, key: str) -> object | None:
+        with self._lock:
+            row = self._db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
+        return json.loads(row[0]) if row else None
 
     # ---- first seen ---------------------------------------------------
     def mark_seen(self, pools: list[Pool]) -> None:
