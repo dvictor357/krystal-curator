@@ -99,6 +99,7 @@ COLUMNS = (
     "SHARE",
     "SCORE",
     "RK",
+    "AGE",
     "LINKS",
     "FLAGS",
 )
@@ -123,6 +124,17 @@ def _color_num(s: str, v: float, good_hi: float, bad_lo: float, *, invert: bool 
     hi, lo = (v <= bad_lo, v >= good_hi) if invert else (v >= good_hi, v <= bad_lo)
     style = "bold green" if hi else "bold red" if lo else ""
     return Text(s, style=style, justify="right")
+
+
+def _age_text(p: Pool) -> Text:
+    """Days since this tool first saw the pool (lower bound on its real age)."""
+    d = p.seen_days
+    if p.is_new:
+        return Text("<1d", style="bold red", justify="right")
+    if d is None:
+        return Text("·", style="dim", justify="right")
+    style = "red" if d < 1 else "yellow" if d < 3 else ""
+    return Text(f"{d:.0f}d+" if d >= 1 else f"{d * 24:.0f}h+", style=style, justify="right")
 
 
 def _days(d: float | None) -> str:
@@ -173,6 +185,7 @@ SORTABLE: dict[str, Callable[[Scored], float | str]] = {
     "SCORE": lambda s: s.score,
     "RK": lambda s: s.grade,
     "LINKS": lambda s: s.n_links,
+    "AGE": lambda s: s.pool.seen_days or 0.0,
 }
 SORT_ORDER = [c for c in COLUMNS if c in SORTABLE]
 # text columns and risk columns read naturally ascending
@@ -1170,6 +1183,7 @@ class CuratorApp(App[None]):
                 _color_num(f"{s.sim.share * 100:.1f}%", s.sim.share, 0.0, 0.25, invert=True),
                 Text(f"{s.score:5.1f}", justify="right", style="bold #ffb000"),
                 _grade_text(s.grade),
+                _age_text(p),
                 self._links_cell(p),
                 Text(" ".join(s.flags), style="magenta"),
                 key=p.address + p.protocol,
@@ -1285,10 +1299,16 @@ class CuratorApp(App[None]):
         )
         auto = "yes" if p.lp_auto else "NO"
         dyn = "dynamic" if p.dynamic_fee else "fixed"
-        t.add_row(
-            "MISC",
-            f"lp-auto {auto}   fee {dyn}   incentives {p.incentive_usd_day:,.0f}$/d",
+        inc = (
+            f"incentives {p.incentive_usd_day:,.0f}$/d (+{p.incentive_yield_day * 100:.2f}%/d)"
+            if p.incentive_usd_day
+            else "incentives none"
         )
+        mm = p.fee_mismatch
+        eff = f"   eff fee {p.effective_fee_pct:.3f}% vs tier {p.fee_tier_pct:.3f}%" + (
+            f" ({mm * 100:+.0f}%)" if mm is not None else ""
+        )
+        t.add_row("MISC", f"lp-auto {auto}   fee {dyn}   {inc}{eff}")
         if p.tx24 is not None:
             t.add_row("TX24", f"{p.tx24:,}")
         t.add_row("", "")

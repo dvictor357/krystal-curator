@@ -121,8 +121,13 @@ Weighted per profile:
 - **depth** – log-scaled TVL above the profile floor
 - **risk** – inverse of price volatility and 24h drawdown
 
-`RK` (A–E) is a profile-independent risk grade. Flags: `NEW` (<1d history), `SPIKE`,
-`FADING`, `QUIET-1H`, `DYN-FEE`, `INCENTIVE`, `NO-AUTO`, `BLUE-CHIP`.
+Live incentive rewards (gauges / Merkl, not killed) are added to the yield axis as
+`dailyRewardUsd / tvl`.
+
+`RK` (A–E) is a profile-independent risk grade. `AGE` is days since this tool first saw the
+pool (a lower bound on its real age; `<1d` from the API's own stats). Flags: `NEW` (<1d
+history), `YOUNG` (first seen <3d ago), `SPIKE`, `FADING`, `QUIET-1H`, `DYN-FEE`,
+`EFFx%` (realised fee rate more than 30 % off the tier), `INCENTIVE`, `NO-AUTO`, `BLUE-CHIP`.
 
 ## My positions (`P`)
 
@@ -253,8 +258,13 @@ Weighted per profile:
 - **depth** – log-scaled TVL above the profile floor
 - **risk** – inverse of price volatility and 24h drawdown
 
-`RK` (A–E) is a profile-independent risk grade. Flags: `NEW` (<1d history), `SPIKE`,
-`FADING`, `QUIET-1H`, `DYN-FEE`, `INCENTIVE`, `NO-AUTO`, `BLUE-CHIP`.
+Live incentive rewards (gauges / Merkl, not killed) are added to the yield axis as
+`dailyRewardUsd / tvl`.
+
+`RK` (A–E) is a profile-independent risk grade. `AGE` is days since this tool first saw the
+pool (a lower bound on its real age; `<1d` from the API's own stats). Flags: `NEW` (<1d
+history), `YOUNG` (first seen <3d ago), `SPIKE`, `FADING`, `QUIET-1H`, `DYN-FEE`,
+`EFFx%` (realised fee rate more than 30 % off the tier), `INCENTIVE`, `NO-AUTO`, `BLUE-CHIP`.
 
 ## Cloud API: your positions (`P`)
 

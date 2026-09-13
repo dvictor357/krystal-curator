@@ -66,3 +66,15 @@ def test_sparkline():
     s = sparkline([0, 1, 2, 3, 4, 5, 6, 7])
     assert s == "▁▂▃▄▅▆▇█"
     assert len(sparkline(list(range(50)), width=12)) == 12
+
+
+def test_mark_seen_keeps_first_timestamp(tmp_path):
+    st = Store(tmp_path / "t.sqlite3")
+    p = mk("0xa", 1, 1)
+    st.mark_seen([p])
+    first = p.first_seen_ts
+    assert first > 0
+    time.sleep(1.1)
+    q = mk("0xa", 2, 2)
+    st.mark_seen([q, mk("0xb", 1, 1)])
+    assert q.first_seen_ts == first

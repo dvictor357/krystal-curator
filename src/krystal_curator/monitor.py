@@ -60,6 +60,7 @@ class Monitor:
     # ---- tick -----------------------------------------------------------
     def tick(self, pools: list[Pool], vaults: list[Vault] | None) -> list[Alert]:
         self.pools = pools
+        self.store.mark_seen(pools)
         alerts = self._watchlist_alerts(pools)
         self._snapshot_pools(pools)
         if vaults is not None:

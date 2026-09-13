@@ -57,6 +57,7 @@ def component_scores(p: Pool, prof: RiskProfile) -> dict[str, float]:
     """Each component in [0, 1]."""
     # Yield: use the *lower* of 24h and 7d-average so a one-day spike can't carry it.
     y = min(p.fee_yield_24h, p.fee_yield_7d_daily) if not p.is_new else p.fee_yield_24h * 0.5
+    y += p.incentive_yield_day  # gauge / Merkl rewards count, but only while live
     yield_pts = _clamp(math.sqrt(y / prof.cap_yield)) if prof.cap_yield > 0 else 0.0
 
     turnover_pts = _clamp(math.sqrt(p.turnover_24h / prof.cap_turnover))
@@ -119,6 +120,11 @@ def flags_for(p: Pool) -> list[str]:
         f.append("QUIET-1H")
     if p.dynamic_fee:
         f.append("DYN-FEE")
+    mm = p.fee_mismatch
+    if mm is not None and abs(mm) > 0.3:
+        f.append(f"EFF{p.effective_fee_pct:.2f}%")  # realised fee rate far from the tier
+    if p.seen_days is not None and p.seen_days < 3 and not p.is_new:
+        f.append("YOUNG")  # first seen by this tool < 3 days ago
     if p.incentive_usd_day > 0:
         f.append("INCENTIVE")
     if not p.lp_auto:

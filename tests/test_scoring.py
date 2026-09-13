@@ -82,3 +82,27 @@ def test_curate_quote_and_protocol_filters():
     assert len(curate(pools, PROFILES["balanced"], quote="USDG")) == 2
     assert len(curate(pools, PROFILES["balanced"], quote=None)) == 3
     assert len(curate(pools, PROFILES["balanced"], protocols={"ramsescl"})) == 1
+
+
+def test_incentives_count_toward_yield_and_flags():
+    from krystal_curator.models import Incentive
+
+    live = mk(incentives=[Incentive("AERO", daily_usd=500, apr=0, killed=False)])
+    dead = mk(incentives=[Incentive("AERO", daily_usd=500, apr=0, killed=True)])
+    assert abs(live.incentive_yield_day - 500 / 500_000) < 1e-12 and dead.incentive_yield_day == 0
+    prof = PROFILES["balanced"]
+    assert score_pool(live, prof).parts["yield"] > score_pool(dead, prof).parts["yield"]
+    assert "INCENTIVE" in score_pool(live, prof).flags
+
+
+def test_fee_mismatch_and_young_flags():
+    import time
+
+    p = mk(fee_tier_pct=0.30, s24h=Stat(volume=1_200_000, fee=12_000, apr=0))  # eff 1.0 %
+    assert p.fee_mismatch is not None and p.fee_mismatch > 2
+    assert any(f.startswith("EFF") for f in score_pool(p, PROFILES["degen"]).flags)
+    q = mk()
+    q.first_seen_ts = int(time.time() - 86400)
+    assert "YOUNG" in score_pool(q, PROFILES["degen"]).flags
+    q.first_seen_ts = int(time.time() - 10 * 86400)
+    assert "YOUNG" not in score_pool(q, PROFILES["degen"]).flags

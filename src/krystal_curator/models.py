@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any
@@ -76,6 +77,7 @@ class Pool:
     dynamic_fee: bool
     tag: str
     incentives: list[Incentive] = field(default_factory=list)
+    first_seen_ts: int = 0  # set by the store: first time this tool saw the pool
     token0_addr: str = ""
     token1_addr: str = ""
     token0_logo: str = ""
@@ -156,9 +158,31 @@ class Pool:
         return sum(i.daily_usd for i in self.incentives if not i.killed)
 
     @property
+    def incentive_yield_day(self) -> float:
+        """Live incentive rewards as a fraction of TVL per day (0 when none / killed)."""
+        return self.incentive_usd_day / self.tvl if self.tvl > 0 else 0.0
+
+    @property
+    def total_yield_24h(self) -> float:
+        return self.fee_yield_24h + self.incentive_yield_day
+
+    @property
+    def fee_mismatch(self) -> float | None:
+        """(effective − tier) / tier when both are known; >0 = pool charges more than its tier."""
+        if self.fee_tier_pct <= 0 or self.s24h.volume < 1000:
+            return None
+        return (self.effective_fee_pct - self.fee_tier_pct) / self.fee_tier_pct
+
+    @property
     def effective_fee_pct(self) -> float:
         """Realised fee rate: fee24 / vol24. Differs from tier for dynamic-fee pools."""
         return self.s24h.fee / self.s24h.volume * 100 if self.s24h.volume > 0 else 0.0
+
+    @property
+    def seen_days(self) -> float | None:
+        if not self.first_seen_ts:
+            return None
+        return (time.time() - self.first_seen_ts) / 86400
 
     # ---- parsing --------------------------------------------------------
     @classmethod

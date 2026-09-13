@@ -30,6 +30,12 @@ CREATE TABLE IF NOT EXISTS vault_snapshots (
     tvl       REAL, pnl REAL, earning24h REAL, my_value REAL, idle REAL, open_n INTEGER
 );
 CREATE INDEX IF NOT EXISTS vsnap_ts ON vault_snapshots (chain_id, address, ts);
+CREATE TABLE IF NOT EXISTS pools_seen (
+    chain_id  INTEGER NOT NULL,
+    address   TEXT    NOT NULL,
+    first_ts  INTEGER NOT NULL,
+    PRIMARY KEY (chain_id, address)
+);
 CREATE TABLE IF NOT EXISTS watchlist (
     chain_id  INTEGER NOT NULL,
     address   TEXT    NOT NULL,
@@ -176,6 +182,21 @@ class Store:
             fee24_pct=_pct(p.s24h.fee, fee24),
             vol24_pct=_pct(p.s24h.volume, vol24),
         )
+
+    # ---- first seen ---------------------------------------------------
+    def mark_seen(self, pools: list[Pool]) -> None:
+        """Record the first time each pool was seen; then stamp `first_seen_ts` on them."""
+        ts = int(time.time())
+        with self._lock:
+            self._db.executemany(
+                "INSERT OR IGNORE INTO pools_seen VALUES (?,?,?)",
+                [(p.chain_id, p.address, ts) for p in pools],
+            )
+            self._db.commit()
+            rows = self._db.execute("SELECT chain_id, address, first_ts FROM pools_seen").fetchall()
+        first = {(c, a): t for c, a, t in rows}
+        for p in pools:
+            p.first_seen_ts = first.get((p.chain_id, p.address), ts)
 
     # ---- vault equity -------------------------------------------------
     def record_vaults(
