@@ -145,3 +145,78 @@ async def test_header_click_sorts(app):
         fees = [r.pool.s24h.fee for r in app.rows]
         assert fees == sorted(fees, reverse=True)
         assert OptionList  # imported for completeness of the modal API
+
+
+@pytest.mark.asyncio
+async def test_positions_screen_renders_detail(app, monkeypatch):
+    """Regression: the detail pane referenced self.config on the wrong object."""
+    import time
+
+    from krystal_curator.positions import Position
+    from krystal_curator.vaults import Vault
+
+    def fake_vaults(wallet, chain_id=None):
+        v = Vault(
+            chain_id=4663,
+            address="0xv",
+            name="V",
+            vault_type="autofarm",
+            owned=True,
+            tvl=6000,
+            pnl=0,
+            apr=0,
+            fee_generated=0,
+            earning_24h=0,
+            earning_30d=0,
+            risk="",
+            age_days=1,
+            my_value=6000,
+            my_deposit=6000,
+            my_withdrawn=0,
+        )
+        pool = app.pools[0] if app.pools else None
+        v.positions = [
+            Position(
+                id="v:1",
+                chain_id=4663,
+                pool_address=pool.address if pool else "0x",
+                protocol="uniswapv4",
+                token0="ETH",
+                token1="USDG",
+                status="IN_RANGE",
+                value=4880,
+                deposit=5000,
+                withdrawn=0,
+                pnl=-100,
+                roi_pct=-2,
+                il=0,
+                fee_pending=8,
+                fee_claimed=0,
+                reward_pending=0,
+                fee_apr=0.2,
+                total_apr=0.2,
+                min_price=2322,
+                max_price=2870,
+                current_price=2493,
+                opened_ts=int(time.time() - 86400),
+                vault="V",
+            )
+        ]
+        return [v]
+
+    monkeypatch.setattr(tui_mod, "fetch_vaults", fake_vaults)
+    app.wallet = "0x000000000000000000000000000000000000dEaD"
+    async with app.run_test(size=(230, 60)) as pilot:
+        await _loaded(app, pilot)
+        await pilot.press("P")
+        for _ in range(30):
+            await pilot.pause(0.1)
+            if type(app.screen).__name__ == "PositionsScreen" and app.vaults:
+                break
+        await pilot.pause(0.3)
+        assert app.screen.query_one("#pos_table").row_count == 1
+        body = str(app.screen.query_one("#pos_detail").render())
+        assert "ROTATE" in body or "KRYSTAL SETUP" in body or body  # rendered without raising
+        await pilot.press("x")
+        await pilot.pause(0.3)
+        assert type(app.screen).__name__ in ("RotationModal", "PositionsScreen")

@@ -825,7 +825,7 @@ class PositionsScreen(Screen[str | None]):
                     Text(rot.verdict, style=verdict_style),
                     Text(
                         f"same {p.value:,.0f}$ in {c.profile.name.lower()} pools (1-4 to change), "
-                        f"switch cost {rot.cost:,.0f}$ ({self.config.rotate_cost_pct}%), x = full list",
+                        f"switch cost {rot.cost:,.0f}$ ({c.config.rotate_cost_pct}%), x = full list",
                         style="dim",
                     ),
                     r,
