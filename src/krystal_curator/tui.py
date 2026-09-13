@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
 
+from rich.console import Group
 from rich.table import Table
 from rich.text import Text
 from textual import work
@@ -473,11 +474,70 @@ class CuratorApp(App[None]):
         chart.add_column()
         chart.add_column()
         chart.add_row(b, render_radar(axes, cols=36, rows=13, show_values=False))
-        b = chart
-        t.add_row(self.profile.name, b)
-        self.main.query_one("#detail_body", Static).update(t)
+        t.add_row(self.profile.name, chart)
+        self.main.query_one("#detail_body", Static).update(
+            Group(
+                t,
+                Text(""),
+                Text.assemble(
+                    ("LEGEND  ", "bold #ffb000"),
+                    ("▲ higher raw = better   ▼ lower = better   ≈ near 1 = best", "grey70"),
+                ),
+                self._score_legend(s),
+            )
+        )
         self._render_hero(s)
         self._enrich(p)
+
+    def _score_legend(self, s: Scored) -> Table:
+        """What each radar axis measures, the raw value behind it, and which way is good.
+
+        PTS are always 0..1 with 1 = best for the active profile; the arrow says which
+        direction of the *raw* metric earns points.
+        """
+        p, prof = s.pool, self.profile
+        g = Table(box=None, pad_edge=False, expand=True, header_style="bold #ffb000")
+        g.add_column("AXIS", style="bold white", no_wrap=True)
+        g.add_column("RAW", no_wrap=True)
+        g.add_column("MEANING", style="grey70")
+
+        def raw(arrow: str, value: str) -> Text:
+            return Text.assemble((f"{arrow} ", "green"), (value, "#ffb000"))
+
+        y = min(p.fee_yield_24h, p.fee_yield_7d_daily) if not p.is_new else p.fee_yield_24h * 0.5
+        vol_cap = prof.max_volatility if prof.max_volatility < 1e6 else 100.0
+        dd_cap = prof.max_drawdown if prof.max_drawdown < 1e6 else 100.0
+        g.add_row(
+            "yield",
+            raw("▲", f"{y * 100:.2f}%/d"),
+            f"daily fee ÷ TVL, lower of 24h and 7d avg. full at {prof.cap_yield * 100:.0f}%/d",
+        )
+        g.add_row(
+            "turnover",
+            raw("▲", f"{p.turnover_24h:.2f}x"),
+            f"vol24 ÷ TVL, times the pool traded through. full at {prof.cap_turnover:.0f}x",
+        )
+        g.add_row(
+            "consistency",
+            raw("≈", f"{p.consistency:.2f}"),
+            "fee24 ÷ (fee7d÷7). 0.7-1.5 steady, >1.5 spike, <0.7 fading, 7 = new",
+        )
+        g.add_row(
+            "liveness",
+            raw("▲", f"{p.liveness:.2f}"),
+            "vol1h×24 ÷ vol24, trading right now? 1 = last hour on daily pace",
+        )
+        g.add_row(
+            "depth",
+            raw("▲", _usd(p.tvl)),
+            f"TVL above profile floor {_usd(prof.min_tvl)}, log scale, full at 100×",
+        )
+        g.add_row(
+            "risk",
+            raw("▼", f"σ{p.volatility:.1f}% dd{p.drawdown24h:.1f}%"),
+            f"price volatility + 24h drawdown vs caps {vol_cap:.0f}% / {dd_cap:.0f}%",
+        )
+        return g
 
     # ---- token metadata (logo + links) ----------------------------------
     def _token_infos(self, p: Pool) -> tuple[TokenInfo | None, TokenInfo | None]:
