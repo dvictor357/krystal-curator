@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from .models import Pool
 from .position import Sim
 from .profiles import RiskProfile
+from .store import Delta
 
 
 def _clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
@@ -24,6 +25,9 @@ class Scored:
     flags: list[str] = field(default_factory=list)
     n_links: int = 0  # filled by the UI once token metadata is known
     sim: Sim | None = None  # position simulation for the chosen size
+    watched: bool = False
+    delta: Delta | None = None  # change vs ~24h-old local snapshot
+    spark: str = ""  # fee24 sparkline from local snapshots
 
     @property
     def base(self) -> str:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import math
 import os
+import time
 import warnings
 import webbrowser
 from collections.abc import Callable
@@ -33,6 +34,7 @@ from .position import simulate
 from .profiles import PROFILES, RiskProfile
 from .radar import render_radar
 from .scoring import Scored, curate
+from .store import Delta, Store, sparkline
 
 # textual-image renders palette PNGs fine; PIL just complains about the conversion.
 warnings.filterwarnings("ignore", message="Palette images with Transparency", module="PIL")
@@ -58,6 +60,8 @@ def pick_image_mode(explicit: str | None = None) -> str:
     return "auto"
 
 
+SNAPSHOT_EVERY = 15 * 60  # seconds between full-universe snapshots
+
 RADAR_LABEL = {
     "yield": "YLD",
     "turnover": "TURN",
@@ -69,12 +73,15 @@ RADAR_LABEL = {
 
 COLUMNS = (
     "#",
+    "★",
     "PAIR",
     "PROTO",
     "TIER%",
     "TVL",
     "VOL24",
     "FEE24",
+    "ΔFEE",
+    "TREND",
     "FEE/D 7D",
     "Y24%",
     "Y7D%",
@@ -114,6 +121,13 @@ def _color_num(s: str, v: float, good_hi: float, bad_lo: float, *, invert: bool 
     return Text(s, style=style, justify="right")
 
 
+def _delta_text(pct: float | None) -> Text:
+    if pct is None:
+        return Text("·", style="dim", justify="right")
+    style = "bold green" if pct >= 10 else "bold red" if pct <= -10 else ""
+    return Text(f"{pct:+.0f}%", style=style, justify="right")
+
+
 def _grade_text(g: str) -> Text:
     colors = {
         "A": "green",
@@ -133,6 +147,8 @@ SORTABLE: dict[str, Callable[[Scored], float | str]] = {
     "TVL": lambda s: s.pool.tvl,
     "VOL24": lambda s: s.pool.s24h.volume,
     "FEE24": lambda s: s.pool.s24h.fee,
+    "ΔFEE": lambda s: s.delta.fee24_pct if s.delta and s.delta.fee24_pct is not None else -1e9,
+    "★": lambda s: s.watched,
     "FEE/D 7D": lambda s: s.pool.s7d.fee / 7,
     "Y24%": lambda s: s.pool.fee_yield_24h,
     "Y7D%": lambda s: s.pool.fee_yield_7d_daily,
@@ -198,6 +214,9 @@ class CuratorApp(App[None]):
         Binding("s", "cycle_sort", "SORT"),
         Binding("S", "reverse_sort", "ASC/DESC"),
         Binding("r", "refresh", "REFRESH"),
+        Binding("a", "toggle_auto", "AUTO"),
+        Binding("asterisk", "toggle_watch", "WATCH", key_display="*"),
+        Binding("W", "watch_only", "★ONLY"),
         Binding("o", "open_url", "OPEN"),
         Binding("l", "links", "LINKS"),
         Binding("e", "export_csv", "CSV"),
@@ -216,9 +235,16 @@ class CuratorApp(App[None]):
         protocols: set[str] | None = None,
         image_mode: str | None = None,
         size: float = 50_000,
+        refresh_seconds: int = 300,
     ) -> None:
         super().__init__()
         self.position_size = size
+        self.refresh_seconds = refresh_seconds if refresh_seconds > 0 else 300
+        self.auto = refresh_seconds > 0
+        self.watch_only = False
+        self.store = Store()
+        self._hist_cache: dict[str, tuple[Delta, str]] = {}
+        self._timer = None
         self.image_mode = pick_image_mode(image_mode)
         self.image_cls = IMAGE_MODES[self.image_mode]
         self.chain_id = chain_id
@@ -270,6 +296,12 @@ class CuratorApp(App[None]):
         self._render_topbar()
         self._set_status("loading …")
         self.action_refresh()
+        if self.auto:
+            self._timer = self.set_interval(self.refresh_seconds, self._auto_tick)
+
+    def _auto_tick(self) -> None:
+        if self.auto:
+            self._fetch()
 
     # ---- data -----------------------------------------------------------
     @work(thread=True, exclusive=True, group="fetch")
@@ -286,7 +318,54 @@ class CuratorApp(App[None]):
         self.last_refresh = datetime.now(UTC)
         if not self.available_protocols:
             self.available_protocols = sorted({p.protocol for p in pools})
+        self._snapshot_and_alert(pools)
         self._rebuild()
+
+    def _snapshot_and_alert(self, pools: list[Pool]) -> None:
+        """Persist pools worth tracking, then warn about watched pools that moved hard.
+
+        Watched pools are recorded on every refresh; the wider universe (aggressive
+        floor) at most every SNAPSHOT_EVERY seconds so the db stays small
+        (~325 pools × 96/day on Robinhood).
+        """
+        floor = PROFILES["aggressive"]
+        full = time.time() - self.store.last_ts() >= SNAPSHOT_EVERY
+        keep = [
+            p
+            for p in pools
+            if self.store.is_watched(p)
+            or (full and p.tvl >= floor.min_tvl and p.s24h.volume >= floor.min_vol24)
+        ]
+        for p in pools:
+            if self.store.is_watched(p):
+                d = self.store.delta(p, hours=1)
+                msgs = []
+                if d.tvl_pct is not None and abs(d.tvl_pct) >= 30:
+                    msgs.append(f"TVL {d.tvl_pct:+.0f}%")
+                if d.fee24_pct is not None and d.fee24_pct <= -50:
+                    msgs.append(f"fee24 {d.fee24_pct:+.0f}%")
+                if p.drawdown24h <= -30:
+                    msgs.append(f"drawdown {p.drawdown24h:.0f}%")
+                if msgs:
+                    self.notify(
+                        f"★ {p.pair}: {', '.join(msgs)}",
+                        title="WATCH ALERT",
+                        severity="warning",
+                        timeout=20,
+                    )
+        self.store.record(keep)
+        self.store.prune(14)
+        self._hist_cache.clear()
+
+    def _hist(self, p: Pool) -> tuple[Delta, str]:
+        key = p.address + p.protocol
+        if key not in self._hist_cache:
+            pts = self.store.history(p, hours=48)
+            self._hist_cache[key] = (
+                self.store.delta(p, hours=24),
+                sparkline([x.fee24 for x in pts], 8),
+            )
+        return self._hist_cache[key]
 
     def _current_rows(self) -> list[Scored]:
         protos = {self.protocol_filter} if self.protocol_filter else None
@@ -294,9 +373,13 @@ class CuratorApp(App[None]):
         if self.find_text:
             ft = self.find_text.upper()
             rows = [r for r in rows if ft in r.pool.pair.upper() or ft in r.pool.address]
+        if self.watch_only:
+            rows = [r for r in rows if self.store.is_watched(r.pool)]
         for r in rows:
             r.n_links = len(self._pool_links(r.pool))
             r.sim = simulate(r.pool, self.position_size)
+            r.watched = self.store.is_watched(r.pool)
+            r.delta, r.spark = self._hist(r.pool)
         rows.sort(key=SORTABLE[self.sort_col], reverse=self.sort_desc)
         return rows
 
@@ -350,6 +433,8 @@ class CuratorApp(App[None]):
         return out
 
     def _rebuild(self) -> None:
+        prev = self._selected()
+        prev_key = prev.pool.address + prev.pool.protocol if prev else None
         self.rows = self._current_rows()
         table = self.main.query_one("#table", DataTable)
         table.clear(columns=True)
@@ -359,12 +444,15 @@ class CuratorApp(App[None]):
             p = s.pool
             table.add_row(
                 Text(str(i), justify="right", style="dim"),
+                Text("★" if s.watched else "", style="bold #ffb000"),
                 Text(p.pair, style="bold white"),
                 Text(p.protocol, style="cyan"),
                 Text(_pct(p.fee_tier_pct), justify="right"),
                 Text(_usd(p.tvl), justify="right"),
                 Text(_usd(p.s24h.volume), justify="right"),
                 Text(_usd(p.s24h.fee), justify="right", style="bold yellow"),
+                _delta_text(s.delta.fee24_pct if s.delta else None),
+                Text(s.spark, style="#ffb000"),
                 Text(_usd(p.s7d.fee / 7), justify="right"),
                 _color_num(_pct(p.fee_yield_24h * 100), p.fee_yield_24h, 0.01, 0.0005),
                 _color_num(_pct(p.fee_yield_7d_daily * 100), p.fee_yield_7d_daily, 0.01, 0.0005),
@@ -392,8 +480,16 @@ class CuratorApp(App[None]):
         )
         self._enrich_table(self.rows)
         if self.rows:
-            table.move_cursor(row=0)
-            self._render_detail(self.rows[0])
+            idx = next(
+                (
+                    i
+                    for i, r in enumerate(self.rows)
+                    if r.pool.address + r.pool.protocol == prev_key
+                ),
+                0,
+            )
+            table.move_cursor(row=idx)
+            self._render_detail(self.rows[idx])
         else:
             self.main.query_one("#detail", Static).update(
                 Text(
@@ -411,9 +507,16 @@ class CuratorApp(App[None]):
         cloud = "  CLOUD:ON" if self.cloud_key else ""
         img = f"  IMG:{self.image_mode.upper()}"
         size = f"   SIZE:${_usd(self.position_size)}"
+        every = (
+            f"{self.refresh_seconds // 60}m"
+            if self.refresh_seconds >= 60
+            else f"{self.refresh_seconds}s"
+        )
+        auto = f"   AUTO:{every}" if self.auto else "   AUTO:off"
+        watch = f"   ★{len(self.store.watch)}" + ("(only)" if self.watch_only else "")
         self.main.query_one("#topbar", Static).update(
             f" KRYSTAL CURATOR   {chain}({self.chain_id})   QUOTE:{quote}   PROTO:{proto}   "
-            f"PROFILE:{self.profile.name}{size}   {ts}{cloud}{img}"
+            f"PROFILE:{self.profile.name}{size}{auto}{watch}   {ts}{cloud}{img}"
         )
 
     def _set_status(self, msg: str) -> None:
@@ -431,6 +534,7 @@ class CuratorApp(App[None]):
         t.add_row("POOL", Text(p.address, overflow="fold"))
         t.add_row("URL", Text(p.url, style=f"link {p.url} underline cyan", overflow="fold"))
         t.add_row("TVL", f"{p.tvl:,.0f}   grade {s.grade}   {' '.join(s.flags)}")
+        t.add_row("HISTORY", self._history_line(p))
         t.add_row("", "")
 
         w = Table(box=None, pad_edge=False, expand=True, header_style="bold #ffb000")
@@ -506,6 +610,27 @@ class CuratorApp(App[None]):
         )
         self._render_hero(s)
         self._enrich(p)
+
+    def _history_line(self, p: Pool) -> Text:
+        pts = self.store.history(p, hours=48)
+        d = self.store.delta(p, hours=24)
+        t = Text()
+        if len(pts) < 2:
+            t.append("no local history yet — refreshes build it (r / auto)", style="dim")
+            return t
+        span_h = (pts[-1].ts - pts[0].ts) / 3600
+        t.append(f"{len(pts)} snaps / {span_h:.0f}h   ", style="dim")
+        t.append("fee ", style="#ffb000")
+        t.append(sparkline([x.fee24 for x in pts], 16), style="#ffb000")
+        t.append("  tvl ", style="cyan")
+        t.append(sparkline([x.tvl for x in pts], 16), style="cyan")
+        if d.hours is not None:
+            t.append(f"   Δ{d.hours:.0f}h ", style="dim")
+            for lab, v in (("tvl", d.tvl_pct), ("fee", d.fee24_pct), ("vol", d.vol24_pct)):
+                if v is not None:
+                    t.append(f"{lab} ")
+                    t.append(f"{v:+.0f}%  ", style="green" if v >= 0 else "red")
+        return t
 
     def _position_table(self, s: Scored) -> Table:
         """Position simulator for self.position_size USD in this pool."""
@@ -745,6 +870,25 @@ class CuratorApp(App[None]):
         col = str(ev.column_key.value)
         if col in SORTABLE:
             self._set_sort(col)
+
+    def action_toggle_auto(self) -> None:
+        self.auto = not self.auto
+        if self.auto and self._timer is None:
+            self._timer = self.set_interval(self.refresh_seconds, self._auto_tick)
+        self._render_topbar()
+        self._set_status(f"auto-refresh {'on' if self.auto else 'off'}")
+
+    def action_toggle_watch(self) -> None:
+        s = self._selected()
+        if s is None:
+            return
+        on = self.store.toggle_watch(s.pool)
+        self._set_status(f"{'★ watching' if on else '☆ unwatched'} {s.pool.pair}")
+        self._rebuild()
+
+    def action_watch_only(self) -> None:
+        self.watch_only = not self.watch_only
+        self._rebuild()
 
     def action_refresh(self) -> None:
         self._set_status("refreshing …")

@@ -47,6 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
     tui = sub.add_parser("tui", help="interactive terminal (default)")
     _common(tui)
     tui.add_argument(
+        "--refresh",
+        type=int,
+        default=300,
+        help="auto-refresh every N seconds (0 = off, default 300)",
+    )
+    tui.add_argument(
         "--images",
         choices=["auto", "tgp", "sixel", "halfcell", "unicode", "off"],
         default=None,
@@ -176,6 +182,7 @@ def run_tui(args: argparse.Namespace) -> int:
         protocols=set(args.protocol) or None,
         image_mode=args.images,
         size=args.size,
+        refresh_seconds=args.refresh,
     ).run()
     return 0
 

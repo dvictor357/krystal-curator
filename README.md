@@ -17,12 +17,22 @@ uv run krystal-curator scan --top 20 --profile conservative --csv out.csv
 uv run krystal-curator scan --quote any --protocol ramsescl
 ```
 
-TUI keys: `1-4` profile · `u` toggle USDG-only · `p` cycle protocol · `s` next sort column · `S` asc/desc · click a header to sort by it ·
+TUI keys: `1-4` profile · `u` toggle USDG-only · `p` cycle protocol · `s` next sort column · `S` asc/desc · click a header to sort by it · `*` watch/unwatch · `W` watched only · `a` auto-refresh on/off · `$` position size ·
 `r` refresh · `o` open pool on Krystal · `l` or `Enter` open the links popup (pool page + website / X / Telegram / Discord …, Enter opens) · `e` export CSV to `exports/` · `/` find · `q` quit.
 
 The `LINKS` column shows which socials each pool's tokens have (sortable).
 
 The detail panel shows both token logos and clickable social links. Logo renderer: `--images auto|tgp|sixel|halfcell|unicode|off` or `KRYSTAL_IMAGE=…`. `auto` uses Kitty/Sixel graphics (Ghostty, Kitty, WezTerm, iTerm2); Warp is detected and gets coloured half-blocks since it does not render graphics escapes. Logos and links come from DexScreener (no key), cached under the user cache dir for 6h.
+
+## Watchlist, history, alerts
+
+Every refresh is snapshotted to a local sqlite db (`~/Library/Application Support/krystal-curator`
+on macOS): watched pools on every refresh, the wider universe every 15 min, kept 14 days.
+That powers the `ΔFEE` column (fee24 vs ~24h ago), the `TREND` sparkline, the HISTORY line
+in the detail panel (fee + TVL sparklines, Δ tvl/fee/vol), and watch alerts: a toast when a
+starred pool's TVL moves ≥30 % in an hour, fee24 halves, or drawdown passes −30 %.
+`--refresh 300` sets the auto-refresh period (0 = off). Cursor stays on the same pool across
+refreshes and re-sorts.
 
 ## Position simulator
 
