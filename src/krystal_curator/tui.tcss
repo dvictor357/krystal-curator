@@ -78,14 +78,14 @@ DataTable > .datatable--fixed {
     padding: 0 1;
 }
 
-#find {
+#find, #size {
     height: 3;
     display: none;
     border: solid #ff9a00;
     background: #000000;
     color: #ffffff;
 }
-#find.visible {
+#find.visible, #size.visible {
     display: block;
 }
 

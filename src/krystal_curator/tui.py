@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import math
 import os
 import warnings
 import webbrowser
@@ -28,6 +29,7 @@ from textual_image.widget import HalfcellImage, Image, SixelImage, TGPImage, Uni
 from . import api
 from .enrich import TokenInfo, TokenMeta
 from .models import Pool
+from .position import simulate
 from .profiles import PROFILES, RiskProfile
 from .radar import render_radar
 from .scoring import Scored, curate
@@ -81,7 +83,9 @@ COLUMNS = (
     "LIVE",
     "σ%",
     "DD24",
-    "APR7D",
+    "MY$/D",
+    "NET$/D",
+    "SHARE",
     "SCORE",
     "RK",
     "LINKS",
@@ -137,14 +141,16 @@ SORTABLE: dict[str, Callable[[Scored], float | str]] = {
     "LIVE": lambda s: s.pool.liveness,
     "σ%": lambda s: s.pool.volatility,
     "DD24": lambda s: s.pool.drawdown24h,
-    "APR7D": lambda s: s.pool.s7d.apr,
+    "MY$/D": lambda s: s.sim.fee_day if s.sim else 0.0,
+    "NET$/D": lambda s: s.sim.net_day if s.sim else 0.0,
+    "SHARE": lambda s: s.sim.share if s.sim else 0.0,
     "SCORE": lambda s: s.score,
     "RK": lambda s: s.grade,
     "LINKS": lambda s: s.n_links,
 }
 SORT_ORDER = [c for c in COLUMNS if c in SORTABLE]
 # text columns and risk columns read naturally ascending
-ASC_DEFAULT = {"PAIR", "PROTO", "σ%", "RK"}
+ASC_DEFAULT = {"PAIR", "PROTO", "σ%", "RK", "SHARE"}
 
 
 class LinksModal(ModalScreen[str | None]):
@@ -196,6 +202,7 @@ class CuratorApp(App[None]):
         Binding("l", "links", "LINKS"),
         Binding("e", "export_csv", "CSV"),
         Binding("slash", "find", "FIND", key_display="/"),
+        Binding("dollar_sign", "size", "SIZE", key_display="$"),
         Binding("escape", "clear_find", "", show=False),
         Binding("q", "quit", "QUIT"),
     ]
@@ -208,8 +215,10 @@ class CuratorApp(App[None]):
         quote: str | None = "USDG",
         protocols: set[str] | None = None,
         image_mode: str | None = None,
+        size: float = 50_000,
     ) -> None:
         super().__init__()
+        self.position_size = size
         self.image_mode = pick_image_mode(image_mode)
         self.image_cls = IMAGE_MODES[self.image_mode]
         self.chain_id = chain_id
@@ -246,6 +255,7 @@ class CuratorApp(App[None]):
                         yield Static("", id="hero_text")
                     yield Static("", id="detail_body")
             yield Input(placeholder="find pair / token …", id="find")
+            yield Input(placeholder="position size in USD, e.g. 50000", id="size", type="number")
             yield Static("", id="status")
         yield Footer()
 
@@ -286,6 +296,7 @@ class CuratorApp(App[None]):
             rows = [r for r in rows if ft in r.pool.pair.upper() or ft in r.pool.address]
         for r in rows:
             r.n_links = len(self._pool_links(r.pool))
+            r.sim = simulate(r.pool, self.position_size)
         rows.sort(key=SORTABLE[self.sort_col], reverse=self.sort_desc)
         return rows
 
@@ -364,7 +375,9 @@ class CuratorApp(App[None]):
                 _color_num(_pct(p.liveness), p.liveness, 0.8, 0.2),
                 _color_num(_pct(p.volatility, 1), p.volatility, 10, 40, invert=True),
                 _color_num(_pct(p.drawdown24h, 1), abs(p.drawdown24h), 10, 40, invert=True),
-                Text(_pct(p.s7d.apr, 0), justify="right"),
+                Text(_usd(s.sim.fee_day), justify="right", style="bold yellow"),
+                _color_num(_usd(s.sim.net_day), s.sim.net_day, 1, 0),
+                _color_num(f"{s.sim.share * 100:.1f}%", s.sim.share, 0.0, 0.25, invert=True),
                 Text(f"{s.score:5.1f}", justify="right", style="bold #ffb000"),
                 _grade_text(s.grade),
                 self._links_cell(p),
@@ -397,9 +410,10 @@ class CuratorApp(App[None]):
         quote = self.quote or "ANY"
         cloud = "  CLOUD:ON" if self.cloud_key else ""
         img = f"  IMG:{self.image_mode.upper()}"
+        size = f"   SIZE:${_usd(self.position_size)}"
         self.main.query_one("#topbar", Static).update(
             f" KRYSTAL CURATOR   {chain}({self.chain_id})   QUOTE:{quote}   PROTO:{proto}   "
-            f"PROFILE:{self.profile.name}   {ts}{cloud}{img}"
+            f"PROFILE:{self.profile.name}{size}   {ts}{cloud}{img}"
         )
 
     def _set_status(self, msg: str) -> None:
@@ -459,6 +473,10 @@ class CuratorApp(App[None]):
         if p.tx24 is not None:
             t.add_row("TX24", f"{p.tx24:,}")
         t.add_row("", "")
+        t.add_row(
+            Text(f"${_usd(self.position_size)}", style="bold #ffb000"), self._position_table(s)
+        )
+        t.add_row("", "")
 
         b = Table(box=None, pad_edge=False, header_style="bold #ffb000")
         b.add_column("SCORE")
@@ -488,6 +506,31 @@ class CuratorApp(App[None]):
         )
         self._render_hero(s)
         self._enrich(p)
+
+    def _position_table(self, s: Scored) -> Table:
+        """Position simulator for self.position_size USD in this pool."""
+        sim = s.sim or simulate(s.pool, self.position_size)
+        g = Table.grid(padding=(0, 2))
+        g.add_column(style="#ffb000", no_wrap=True)
+        g.add_column(style="white")
+        crowd_style = {"ok": "green", "notable": "yellow"}.get(sim.crowding, "bold red")
+        net_style = "bold green" if sim.net_day > 0 else "bold red"
+        ratio = "∞" if sim.fee_il_ratio == math.inf else f"{sim.fee_il_ratio:.1f}×"
+        be = "n/a" if sim.breakeven_days is None else f"{sim.breakeven_days:.1f}d"
+        g.add_row(
+            "share", Text(f"{sim.share * 100:.1f}% of pool   {sim.crowding}", style=crowd_style)
+        )
+        g.add_row(
+            "fee/day",
+            f"{sim.fee_day:,.0f}$   (7d basis {sim.fee_day_7d:,.0f}$)   apr {sim.apr:,.0f}%",
+        )
+        g.add_row("IL/day", f"{sim.il_day:,.0f}$   ({sim.il_day_pct:.2f}%/d, full-range σ²/8)")
+        g.add_row("net/day", Text(f"{sim.net_day:+,.0f}$   fee covers IL {ratio}", style=net_style))
+        g.add_row(
+            "range 7d", f"±{sim.range_1s_7d:.1f}% holds 68%   ±{sim.range_2s_7d:.1f}% holds 95%"
+        )
+        g.add_row("breakeven", f"{be} of fees to cover a 2σ 7-day move")
+        return g
 
     def _score_legend(self, s: Scored) -> Table:
         """What each radar axis measures, the raw value behind it, and which way is good.
@@ -642,10 +685,21 @@ class CuratorApp(App[None]):
             self._render_detail(s)
 
     def on_input_changed(self, ev: Input.Changed) -> None:
-        self.find_text = ev.value.strip()
-        self._rebuild()
+        if ev.input.id == "find":
+            self.find_text = ev.value.strip()
+            self._rebuild()
 
-    def on_input_submitted(self, _: Input.Submitted) -> None:
+    def on_input_submitted(self, ev: Input.Submitted) -> None:
+        if ev.input.id == "size":
+            try:
+                size = float(ev.value)
+            except ValueError:
+                size = 0.0
+            if size > 0:
+                self.position_size = size
+                self._set_status(f"position size {size:,.0f}$")
+            ev.input.remove_class("visible")
+            self._rebuild()
         self.main.query_one("#table", DataTable).focus()
 
     def _selected(self) -> Scored | None:
@@ -739,9 +793,16 @@ class CuratorApp(App[None]):
         box = self.main.query_one("#find", Input)
         box.value = ""
         box.remove_class("visible")
+        self.main.query_one("#size", Input).remove_class("visible")
         self.find_text = ""
         self.main.query_one("#table", DataTable).focus()
         self._rebuild()
+
+    def action_size(self) -> None:
+        box = self.main.query_one("#size", Input)
+        box.value = f"{self.position_size:.0f}"
+        box.add_class("visible")
+        box.focus()
 
 
 def write_csv(path: Path, rows: list[Scored]) -> None:
@@ -767,6 +828,11 @@ def write_csv(path: Path, rows: list[Scored]) -> None:
         "apr24",
         "apr7d",
         "apr30d",
+        "size",
+        "my_fee_day",
+        "my_share_pct",
+        "il_day_est",
+        "net_day",
         "lp_auto",
         "flags",
         "address",
@@ -800,6 +866,11 @@ def write_csv(path: Path, rows: list[Scored]) -> None:
                     "apr24": round(p.s24h.apr),
                     "apr7d": round(p.s7d.apr),
                     "apr30d": round(p.s30d.apr),
+                    "size": round(s.sim.size) if s.sim else "",
+                    "my_fee_day": round(s.sim.fee_day, 1) if s.sim else "",
+                    "my_share_pct": round(s.sim.share * 100, 2) if s.sim else "",
+                    "il_day_est": round(s.sim.il_day, 1) if s.sim else "",
+                    "net_day": round(s.sim.net_day, 1) if s.sim else "",
                     "lp_auto": p.lp_auto,
                     "flags": " ".join(s.flags),
                     "address": p.address,

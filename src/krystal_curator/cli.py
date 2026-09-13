@@ -12,6 +12,7 @@ from rich.table import Table
 
 from . import api
 from .models import ROBINHOOD
+from .position import simulate
 from .profiles import PROFILE_ORDER, PROFILES
 
 
@@ -33,6 +34,9 @@ def _common(ap: argparse.ArgumentParser) -> None:
         action="append",
         default=[],
         help="restrict to protocol key(s); repeatable",
+    )
+    ap.add_argument(
+        "--size", type=float, default=50_000, help="your position size in USD (default 50000)"
     )
 
 
@@ -76,6 +80,8 @@ def run_scan(args: argparse.Namespace) -> int:
         con.print(f"[red]{e}[/red]")
         return 2
     rows = curate(pools, prof, quote=quote, protocols=protos)[: args.top]
+    for s in rows:
+        s.sim = simulate(s.pool, args.size)
     if not rows:
         con.print("[red]no pool passes this profile; try --profile aggressive or --quote any[/red]")
         return 1
@@ -89,7 +95,10 @@ def run_scan(args: argparse.Namespace) -> int:
                 s.pool.tx24 = api.fetch_tx_count_24h(s.pool, key)
 
     t = Table(
-        title=f"{prof.name}  chain {args.chain}  quote {quote or 'any'}  {len(pools)} → {len(rows)}",
+        title=(
+            f"{prof.name}  chain {args.chain}  quote {quote or 'any'}  "
+            f"size ${args.size:,.0f}  {len(pools)} → {len(rows)}"
+        ),
         header_style="bold #ffb000",
         border_style="#a05e00",
         box=box.SIMPLE_HEAD,
@@ -109,6 +118,9 @@ def run_scan(args: argparse.Namespace) -> int:
         "CONS",
         "σ%",
         "DD24",
+        "MY$/D",
+        "NET$/D",
+        "SHARE",
         "SCORE",
         "RK",
         "FLAGS",
@@ -132,6 +144,9 @@ def run_scan(args: argparse.Namespace) -> int:
             f"{p.consistency:.2f}",
             f"{p.volatility:.1f}",
             f"{p.drawdown24h:.1f}",
+            f"{s.sim.fee_day:,.0f}",
+            f"{s.sim.net_day:+,.0f}",
+            f"{s.sim.share * 100:.1f}%",
             f"{s.score:.1f}",
             s.grade,
             " ".join(s.flags),
@@ -160,6 +175,7 @@ def run_tui(args: argparse.Namespace) -> int:
         quote=quote,
         protocols=set(args.protocol) or None,
         image_mode=args.images,
+        size=args.size,
     ).run()
     return 0
 

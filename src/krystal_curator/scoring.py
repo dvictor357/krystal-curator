@@ -6,6 +6,7 @@ import math
 from dataclasses import dataclass, field
 
 from .models import Pool
+from .position import Sim
 from .profiles import RiskProfile
 
 
@@ -22,6 +23,7 @@ class Scored:
     grade: str = "?"
     flags: list[str] = field(default_factory=list)
     n_links: int = 0  # filled by the UI once token metadata is known
+    sim: Sim | None = None  # position simulation for the chosen size
 
     @property
     def base(self) -> str:

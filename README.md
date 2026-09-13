@@ -24,6 +24,21 @@ The `LINKS` column shows which socials each pool's tokens have (sortable).
 
 The detail panel shows both token logos and clickable social links. Logo renderer: `--images auto|tgp|sixel|halfcell|unicode|off` or `KRYSTAL_IMAGE=…`. `auto` uses Kitty/Sixel graphics (Ghostty, Kitty, WezTerm, iTerm2); Warp is detected and gets coloured half-blocks since it does not render graphics escapes. Logos and links come from DexScreener (no key), cached under the user cache dir for 6h.
 
+## Position simulator
+
+`--size 50000` (or `$` in the TUI) sets your position size. Every row then shows what *you*
+would earn, not the pool headline:
+
+- `MY$/D` – pool fee24 × your share, where share = size / (tvl + size) (dilution-adjusted)
+- `SHARE` – your fraction of the pool after entering; ≥25 % flagged (you become the pool)
+- `NET$/D` – `MY$/D` minus an impermanent-loss estimate of σ²/8 per day (full-range
+  lognormal approximation, σ = Krystal `priceVolatility` treated as daily)
+
+The detail panel adds APR at your size, 7d-basis fee, fee/IL coverage ratio, a suggested
+±range that holds 68 % / 95 % of 7-day price outcomes (σ√7, 2σ√7), and how many days of
+fees cover a 2σ move. Concentrated ranges scale fees and IL by roughly the same factor, so
+the fee/IL ratio is the pool-selection signal; the range is the position-sizing one.
+
 ## Profiles
 
 | key | tvl ≥ | vol24 ≥ | σ ≤ | dd24 ≤ | tier ≤ | new pools | lp-auto |
