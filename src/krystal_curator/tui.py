@@ -1041,11 +1041,15 @@ class CuratorApp(App[None]):
             self._set_sort(col)
 
     def action_positions(self) -> None:
+        missing = []
         if not self.cloud_key:
-            self._set_status(f"set {api.CLOUD_KEY_ENV} (env or .env) to use the positions view")
-            return
+            missing.append(f"{api.CLOUD_KEY_ENV}=<key from cloud.krystal.app>")
         if not self.wallet:
-            self._set_status(f"set --wallet or {api.WALLET_ENV} to use the positions view")
+            missing.append(f"{api.WALLET_ENV}=0x… (or --wallet)")
+        if missing:
+            msg = "add to .env: " + "   ".join(missing)
+            self._set_status(msg)
+            self.notify(msg, title="POSITIONS NEEDS", severity="error", timeout=12)
             return
         self.push_screen(PositionsScreen(self), self._on_positions_closed)
 
