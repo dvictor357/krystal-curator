@@ -29,6 +29,7 @@ from .store import Store
 log = logging.getLogger("krystal.bot")
 
 COMMANDS: list[tuple[str, str]] = [
+    ("menu", "show the button menu"),
     ("pos", "open positions + edges"),
     ("scan", "top pools: /scan [profile] [n]"),
     ("pool", "pool detail: /pool PAIR|address"),
@@ -57,6 +58,34 @@ def _usd(x: float) -> str:
 
 def _pre(text: str) -> str:
     return f"<pre>{html.escape(text)}</pre>"
+
+
+# ---- keyboards ----------------------------------------------------------------
+# persistent reply keyboard (bottom of the chat); labels map back to commands
+MENU_ROWS: list[list[tuple[str, str]]] = [
+    [("📊 Positions", "/pos"), ("🔎 Scan", "/scan")],
+    [("🔁 Rotate", "/rotate"), ("⚙️ Setup", "/setup")],
+    [("★ Watchlist", "/watchlist"), ("📄 Report", "/report")],
+    [("🎚 Profile", "/profile"), ("💵 Size", "/size"), ("ℹ️ Status", "/status")],
+]
+LABEL_TO_CMD = {label: cmd for row in MENU_ROWS for label, cmd in row}
+
+
+def reply_keyboard() -> dict:
+    return {
+        "keyboard": [[{"text": label} for label, _ in row] for row in MENU_ROWS],
+        "resize_keyboard": True,
+        "is_persistent": True,
+    }
+
+
+def inline(rows: list[list[tuple[str, str]]]) -> dict:
+    """rows of (label, command) → inline keyboard; command goes back through handle()."""
+    return {
+        "inline_keyboard": [
+            [{"text": label, "callback_data": cmd[:64]} for label, cmd in row] for row in rows
+        ]
+    }
 
 
 class Bot:
@@ -89,28 +118,44 @@ class Bot:
     def poll(self, timeout: int = 0) -> None:
         for upd in self.tg.get_updates(self.offset, timeout=timeout):
             self.offset = int(upd.get("update_id", 0)) + 1
-            msg = upd.get("message") or {}
-            chat = str((msg.get("chat") or {}).get("id"))
-            text = (msg.get("text") or "").strip()
-            if chat != str(self.tg.chat_id) or not text.startswith("/"):
-                continue
-            try:
-                reply = self.handle(text)
-            except Exception as e:
-                log.exception("command failed: %s", text)
-                reply = f"error: {e}"
-            if reply:
-                self.tg.send(reply, html=True)
+            cb = upd.get("callback_query")
+            if cb:
+                chat = str(((cb.get("message") or {}).get("chat") or {}).get("id"))
+                text = (cb.get("data") or "").strip()
+                if chat != str(self.tg.chat_id):
+                    continue
+                self.tg.answer_callback(cb.get("id", ""))
+            else:
+                msg = upd.get("message") or {}
+                chat = str((msg.get("chat") or {}).get("id"))
+                text = (msg.get("text") or "").strip()
+                if chat != str(self.tg.chat_id):
+                    continue
+                text = LABEL_TO_CMD.get(text, text)
+                if not text.startswith("/"):
+                    continue
+            self._reply(text)
+
+    def _reply(self, text: str) -> None:
+        try:
+            reply, markup = self.handle(text)
+        except Exception as e:
+            log.exception("command failed: %s", text)
+            reply, markup = f"error: {e}", None
+        if reply:
+            self.tg.send(reply, html=True, reply_markup=markup)
 
     # ---- dispatch -----------------------------------------------------------
-    def handle(self, text: str) -> str:
+    def handle(self, text: str) -> tuple[str, dict | None]:
+        """Returns (reply text, reply markup)."""
         parts = text.split()
         cmd = parts[0].lstrip("/").split("@")[0].lower()
         args = parts[1:]
         fn = getattr(self, f"cmd_{cmd}", None)
         if fn is None:
-            return f"unknown command /{html.escape(cmd)} — /help"
-        return fn(args)
+            return f"unknown command /{html.escape(cmd)} — /help", None
+        out = fn(args)
+        return out if isinstance(out, tuple) else (out, None)
 
     def _pools(self) -> list[Pool]:
         return self.mon.pools
@@ -130,9 +175,17 @@ class Bot:
         return score_pool(matches[0], self._prof())
 
     # ---- commands -----------------------------------------------------------
-    def cmd_help(self, _: list[str]) -> str:
+    def cmd_start(self, _: list[str]):
+        head = f"krystal-curator · profile {self.profile} · size ${self.size:,.0f}"
+        return f"{head}\nuse the buttons below or /help", reply_keyboard()
+
+    cmd_menu = cmd_start
+
+    def cmd_help(self, _: list[str]):
         lines = [f"/{c} — {d}" for c, d in COMMANDS]
-        return "\n".join(lines) + f"\n\nprofile {self.profile} · size ${self.size:,.0f}"
+        return "\n".join(
+            lines
+        ) + f"\n\nprofile {self.profile} · size ${self.size:,.0f}", reply_keyboard()
 
     def cmd_status(self, _: list[str]) -> str:
         hb = self.store.kv_get("watch.heartbeat") or {}
@@ -145,9 +198,12 @@ class Bot:
             f"profile {self.profile} · size ${self.size:,.0f} · alerts {'MUTED' if self.muted else 'on'}"
         )
 
-    def cmd_profile(self, args: list[str]) -> str:
+    def cmd_profile(self, args: list[str]):
         if not args:
-            return f"profile {self.profile}. options: {', '.join(PROFILE_ORDER)}"
+            rows = [
+                [(("✓ " if k == self.profile else "") + k, f"/profile {k}") for k in PROFILE_ORDER]
+            ]
+            return f"profile {self.profile} — pick:", inline(rows)
         key = args[0].lower()
         if key not in PROFILES:
             return f"unknown profile. options: {', '.join(PROFILE_ORDER)}"
@@ -156,9 +212,11 @@ class Bot:
         self._save()
         return f"profile → {key}: {PROFILES[key].blurb}"
 
-    def cmd_size(self, args: list[str]) -> str:
+    def cmd_size(self, args: list[str]):
         if not args:
-            return f"size ${self.size:,.0f}"
+            presets = (5_000, 10_000, 20_000, 50_000, 100_000)
+            rows = [[(f"${v // 1000}k", f"/size {v}") for v in presets]]
+            return f"size ${self.size:,.0f} — pick or type /size 12345:", inline(rows)
         try:
             v = float(args[0].replace("k", "000").replace("K", "000").replace(",", ""))
         except ValueError:
@@ -205,7 +263,14 @@ class Bot:
                 f"{i:>2} {p.pair[:15]:<15}{r.grade:>2} {p.fee_yield_24h * 100:>5.2f} "
                 f"{_usd(sim.fee_day):>6} {_usd(sim.net_day):>6} {sim.share * 100:>3.0f}% {tx:>6}"
             )
-        return _pre("\n".join(out)) + "\n/pool PAIR for detail"
+        rows = [
+            [(f"{r.pool.pair[:12]} ↗", f"/pool {r.pool.address}") for r in rows[i : i + 2]]
+            for i in range(0, min(len(rows), 6), 2)
+        ]
+        rows.append(
+            [(("✓ " if k == prof.key else "") + k[:4], f"/scan {k} {n}") for k in PROFILE_ORDER]
+        )
+        return _pre("\n".join(out)), inline(rows)
 
     def cmd_pool(self, args: list[str]) -> str:
         if not args:
@@ -243,7 +308,17 @@ class Bot:
         text += f'\n<a href="{p.url}">open on Krystal</a>'
         if links:
             text += "\n" + "\n".join(html.escape(x) for x in links[:6])
-        return text
+        watched = self.store.is_watched(p)
+        rows = [
+            [
+                (
+                    "☆ unwatch" if watched else "★ watch",
+                    f"/{'unwatch' if watched else 'watch'} {p.address}",
+                ),
+                ("🔎 scan", "/scan"),
+            ]
+        ]
+        return text, inline(rows)
 
     def _positions(self) -> list[Position]:
         return self.mon.open_positions()
@@ -276,7 +351,8 @@ class Bot:
                 f"{'IN ' if p.in_range else 'OUT'} {p.pair} {p.value:,.0f}$ pnl {p.pnl:+,.0f}$ "
                 f"fees {p.fees_total:,.1f}$ {p.age_days:.1f}d pool {sc.grade if sc else '?'}\n   {edge}"
             )
-        return _pre("\n".join(out))
+        rows = [[("🔁 rotate", "/rotate"), ("⚙️ setup", "/setup"), ("📄 report", "/report")]]
+        return _pre("\n".join(out)), inline(rows)
 
     def cmd_rotate(self, _: list[str]) -> str:
         opens = self._positions()
@@ -305,7 +381,10 @@ class Bot:
                     if cd.payback_days is not None
                     else f"  → {cd.pool.pair:<14} {cd.scored.grade} net {cd.sim.net_day:+,.0f}$/d"
                 )
-        return _pre("\n".join(out)) + f"\nprofile {self.profile} — /profile to change"
+        rows = [
+            [(("✓ " if k == self.profile else "") + k[:4], f"/profile {k}") for k in PROFILE_ORDER]
+        ]
+        return _pre("\n".join(out)), inline(rows)
 
     def cmd_setup(self, _: list[str]) -> str:
         opens = self._positions()
@@ -351,7 +430,11 @@ class Bot:
             f"★ {p.pair:<15} tvl {_usd(p.tvl):>6} fee24 {_usd(p.s24h.fee):>6} y {p.fee_yield_24h * 100:.2f}% σ {p.volatility:.0f}%"
             for p in rows
         ]
-        return _pre("\n".join(out))
+        btn = [
+            [(f"{p.pair[:12]} ↗", f"/pool {p.address}"), ("☆", f"/unwatch {p.address}")]
+            for p in rows[:8]
+        ]
+        return _pre("\n".join(out)), inline(btn)
 
     def cmd_report(self, _: list[str]) -> str:
         if not self.mon.vaults:

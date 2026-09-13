@@ -154,6 +154,9 @@ TELEGRAM_CHAT_ID=123456789         # your user id (message the bot, then GET /ge
 thresholds are in the `[alerts]` table of `config.toml`. `status` shows the heartbeat.
 
 With Telegram on, the daemon is also a **bot**: message it from the configured chat.
+`/menu` puts a persistent button bar under the chat (Positions · Scan · Rotate · Setup ·
+Watchlist · Report · Profile · Size · Status); replies carry inline buttons for the next
+step (pool detail, watch/unwatch, profile and size pickers, rotate/setup/report).
 
 | command | what you get |
 |---|---|

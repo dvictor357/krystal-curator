@@ -75,6 +75,9 @@ def run_watch(
     bot = Bot(tg, store, cfg, mon) if tg else None
     if bot:
         log.info("telegram commands enabled (/help)")
+        from .bot import reply_keyboard
+
+        tg.send("buttons ready — /menu any time", reply_markup=reply_keyboard())
 
     stop = False
 

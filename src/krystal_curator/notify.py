@@ -22,10 +22,10 @@ class Telegram:
         token, chat = os.environ.get(TOKEN_ENV), os.environ.get(CHAT_ENV)
         return cls(token, chat) if token and chat else None
 
-    def send(self, text: str, *, html: bool = False) -> bool:
+    def send(self, text: str, *, html: bool = False, reply_markup: dict | None = None) -> bool:
         ok = True
-        for i in range(0, max(len(text), 1), _MAX):
-            chunk = text[i : i + _MAX]
+        chunks = [text[i : i + _MAX] for i in range(0, max(len(text), 1), _MAX)]
+        for n, chunk in enumerate(chunks):
             payload: dict = {
                 "chat_id": self.chat_id,
                 "text": chunk,
@@ -33,6 +33,8 @@ class Telegram:
             }
             if html:
                 payload["parse_mode"] = "HTML"
+            if reply_markup and n == len(chunks) - 1:
+                payload["reply_markup"] = reply_markup
             try:
                 r = httpx.post(f"{self.base}/sendMessage", json=payload, timeout=20)
                 ok &= r.status_code == 200
@@ -42,7 +44,7 @@ class Telegram:
 
     def get_updates(self, offset: int | None, timeout: int = 0) -> list[dict]:
         """Long-poll incoming messages; returns raw update objects (may be empty)."""
-        params: dict = {"timeout": timeout, "allowed_updates": ["message"]}
+        params: dict = {"timeout": timeout, "allowed_updates": ["message", "callback_query"]}
         if offset is not None:
             params["offset"] = offset
         try:
@@ -52,6 +54,16 @@ class Telegram:
             return (r.json() or {}).get("result") or []
         except (httpx.HTTPError, ValueError):
             return []
+
+    def answer_callback(self, callback_id: str, text: str = "") -> None:
+        try:
+            httpx.post(
+                f"{self.base}/answerCallbackQuery",
+                json={"callback_query_id": callback_id, "text": text[:200]},
+                timeout=10,
+            )
+        except httpx.HTTPError:
+            pass
 
     def set_commands(self, commands: list[tuple[str, str]]) -> bool:
         try:
