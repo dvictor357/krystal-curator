@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import api
 from .analytics import report_markdown
+from .bot import Bot
 from .config import Config
 from .models import CHAIN_SLUG
 from .monitor import Monitor
@@ -70,6 +71,10 @@ def run_watch(
             f"every {interval}s · profile {profile}"
             + (f" · wallet {wallet[:6]}…{wallet[-4:]}" if wallet else "")
         )
+
+    bot = Bot(tg, store, cfg, mon) if tg else None
+    if bot:
+        log.info("telegram commands enabled (/help)")
 
     stop = False
 
@@ -138,7 +143,7 @@ def run_watch(
                         if tg:
                             tg.send(msg)
             seen_ids |= {p.id for p in opens}
-            if tg and alerts:
+            if tg and alerts and not (bot and bot.muted):
                 icon = {"error": "🔴", "warning": "🟠", "information": "🟢"}
                 tg.send(
                     "\n".join(f"{icon.get(a.severity, '•')} {a.title}: {a.text}" for a in alerts)
@@ -174,10 +179,12 @@ def run_watch(
         if once:
             break
         sleep = max(5.0, interval - (time.time() - t0))
-        for _ in range(int(sleep)):
-            if stop:
-                break
-            time.sleep(1)
+        deadline = time.time() + sleep
+        while not stop and time.time() < deadline:
+            if bot:
+                bot.poll(timeout=min(20, max(1, int(deadline - time.time()))))
+            else:
+                time.sleep(1)
     if tg:
         tg.send("krystal-curator watch stopped")
     log.info("stopped")

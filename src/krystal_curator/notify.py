@@ -22,20 +22,47 @@ class Telegram:
         token, chat = os.environ.get(TOKEN_ENV), os.environ.get(CHAT_ENV)
         return cls(token, chat) if token and chat else None
 
-    def send(self, text: str) -> bool:
+    def send(self, text: str, *, html: bool = False) -> bool:
         ok = True
         for i in range(0, max(len(text), 1), _MAX):
             chunk = text[i : i + _MAX]
+            payload: dict = {
+                "chat_id": self.chat_id,
+                "text": chunk,
+                "disable_web_page_preview": True,
+            }
+            if html:
+                payload["parse_mode"] = "HTML"
             try:
-                r = httpx.post(
-                    f"{self.base}/sendMessage",
-                    json={"chat_id": self.chat_id, "text": chunk, "disable_web_page_preview": True},
-                    timeout=20,
-                )
+                r = httpx.post(f"{self.base}/sendMessage", json=payload, timeout=20)
                 ok &= r.status_code == 200
             except httpx.HTTPError:
                 ok = False
         return ok
+
+    def get_updates(self, offset: int | None, timeout: int = 0) -> list[dict]:
+        """Long-poll incoming messages; returns raw update objects (may be empty)."""
+        params: dict = {"timeout": timeout, "allowed_updates": ["message"]}
+        if offset is not None:
+            params["offset"] = offset
+        try:
+            r = httpx.get(f"{self.base}/getUpdates", params=params, timeout=timeout + 10)
+            if r.status_code != 200:
+                return []
+            return (r.json() or {}).get("result") or []
+        except (httpx.HTTPError, ValueError):
+            return []
+
+    def set_commands(self, commands: list[tuple[str, str]]) -> bool:
+        try:
+            r = httpx.post(
+                f"{self.base}/setMyCommands",
+                json={"commands": [{"command": c, "description": d} for c, d in commands]},
+                timeout=15,
+            )
+            return r.status_code == 200
+        except httpx.HTTPError:
+            return False
 
     def send_file(self, path: Path, caption: str = "") -> bool:
         try:

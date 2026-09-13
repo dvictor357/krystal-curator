@@ -12,7 +12,7 @@ Python 3.13, `uv`, Textual TUI. Owner is an LP / vault manager; numbers drive re
 ## Layout (`src/krystal_curator/`)
 - `api.py` public LP-explorer feed (free) + Cloud API helpers (paid units) · `enrich.py` DexScreener logos/socials · `vaults.py` vault + strategy positions (free public API) · `positions.py` Position model + Cloud `/v1/positions`
 - `models.py` Pool + derived metrics · `profiles.py` risk profiles · `scoring.py` filters/score/grade/flags · `position.py` size simulator (dilution, σ²/8 IL) · `advisor.py` range-edge math · `rotation.py` opportunity cost · `analytics.py` track record / report
-- `store.py` sqlite (pool + vault snapshots, watchlist) · `monitor.py` alert rules shared by TUI and daemon · `daemon.py` `watch` loop · `notify.py` Telegram · `backtest.py`
+- `store.py` sqlite (pool + vault snapshots, watchlist) · `monitor.py` alert rules shared by TUI and daemon · `daemon.py` `watch` loop · `notify.py` Telegram · `bot.py` Telegram commands · `autoconfig.py` Krystal Automation form values · `backtest.py`
 - `tui.py` + `tui.tcss` all screens (CuratorApp, PositionsScreen, TrackScreen, modals) · `cli.py` argparse entry
 
 ## Conventions

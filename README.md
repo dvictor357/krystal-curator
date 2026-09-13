@@ -153,6 +153,22 @@ TELEGRAM_CHAT_ID=123456789         # your user id (message the bot, then GET /ge
 `digest_hour` writes the vault report at that UTC hour and sends it as a file. Alert
 thresholds are in the `[alerts]` table of `config.toml`. `status` shows the heartbeat.
 
+With Telegram on, the daemon is also a **bot**: message it from the configured chat.
+
+| command | what you get |
+|---|---|
+| `/pos` | vaults (tvl, pnl, 24h, idle, since-start, track record) + every open position with its nearest range edge in σ / days |
+| `/scan [profile] [n]` | top pools: grade, yield, MY$/D, NET/D, share, swaps/24h |
+| `/pool PAIR` | one pool: stats, flow, sim at your size, range suggestion, links |
+| `/rotate` | rotation verdict + top-3 candidates per position |
+| `/setup` | Krystal Automation values per position |
+| `/watch PAIR` · `/unwatch` · `/watchlist` | starred pools (shared with the TUI) |
+| `/size 20k` · `/profile degen` | change the sim size / risk profile (persisted) |
+| `/report` | vault report as a file |
+| `/mute [h]` · `/unmute` · `/status` · `/help` | |
+
+Messages from any other chat id are ignored.
+
 ## Backtest (`backtest`)
 
 ```sh
