@@ -37,6 +37,7 @@ from .profiles import PROFILES, RiskProfile
 from .radar import render_radar
 from .scoring import Scored, curate, score_pool
 from .store import Delta, Store, sparkline
+from .vaults import Vault, fetch_vaults
 
 # textual-image renders palette PNGs fine; PIL just complains about the conversion.
 warnings.filterwarnings("ignore", message="Palette images with Transparency", module="PIL")
@@ -204,6 +205,7 @@ class LinksModal(ModalScreen[str | None]):
 
 
 POS_COLUMNS = (
+    "VAULT",
     "PAIR",
     "PROTO",
     "STATUS",
@@ -212,23 +214,24 @@ POS_COLUMNS = (
     "DEPOSIT",
     "PNL",
     "ROI%",
-    "IL",
-    "FEE PEND",
-    "FEE CLMD",
-    "FEE APR",
+    "FEES",
+    "PEND",
+    "APR",
     "AGE",
-    "POOL GRADE",
+    "POOL RK",
     "POOL Y24%",
     "POOL σ%",
 )
 
 
 class PositionsScreen(Screen[str | None]):
-    """Your open positions (Cloud API). Enter jumps the screener to that pool."""
+    """Positions inside your Krystal vaults (public API) plus, with a Cloud key, LP NFTs
+    held directly by the wallet. Enter jumps the screener to that pool."""
 
     BINDINGS: ClassVar = [
         Binding("escape", "dismiss(None)", "BACK"),
-        Binding("r", "refresh", "REFRESH (10u)"),
+        Binding("r", "refresh", "REFRESH"),
+        Binding("c", "toggle_closed", "CLOSED"),
         Binding("o", "open_url", "OPEN"),
         Binding("enter", "jump", "SCREEN POOL", show=True),
     ]
@@ -236,102 +239,149 @@ class PositionsScreen(Screen[str | None]):
     def __init__(self, app_ref: CuratorApp) -> None:
         super().__init__()
         self.curator = app_ref
+        self.show_closed = False
+        self._order: list[Position] = []
 
     def compose(self) -> ComposeResult:
         yield Static("", id="pos_topbar")
         table = DataTable(id="pos_table", cursor_type="row")
         table.border_title = "MY POSITIONS"
         yield table
+        yield Static("", id="pos_vaults")
         yield Static("", id="pos_status")
         yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one("#pos_table", DataTable)
         table.add_columns(*POS_COLUMNS)
-        table.fixed_columns = 1
+        table.fixed_columns = 2
         self._topbar()
-        if self.curator.positions:
-            self._fill(self.curator.positions)
+        if self.curator.vaults or self.curator.positions:
+            self._fill()
         else:
             self.action_refresh()
 
-    def _topbar(self) -> None:
-        w = self.curator.wallet or ""
-        total = sum(p.value for p in self.curator.positions)
-        pnl = sum(p.pnl for p in self.curator.positions)
-        pend = sum(p.fee_pending for p in self.curator.positions)
-        out = sum(1 for p in self.curator.positions if not p.in_range)
-        self.query_one("#pos_topbar", Static).update(
-            f" MY POSITIONS   {w[:6]}…{w[-4:]}   ROBINHOOD({self.curator.chain_id})   "
-            f"{len(self.curator.positions)} open, {out} out of range   "
-            f"VALUE ${total:,.0f}   PNL {pnl:+,.0f}$   PENDING FEES {pend:,.0f}$   "
-            f"CLOUD:{self.curator.units_used}u"
-        )
-
+    # ---- data -----------------------------------------------------------
     def action_refresh(self) -> None:
-        self.query_one("#pos_status", Static).update("fetching positions …")
+        self.query_one("#pos_status", Static).update("fetching vaults + positions …")
         self._fetch()
 
     @work(thread=True, exclusive=True, group="positions")
     def _fetch(self) -> None:
+        wallet = self.curator.wallet or ""
         try:
-            rows = fetch_positions(
-                self.curator.cloud_key or "",
-                self.curator.wallet or "",
-                chain_ids=[self.curator.chain_id],
-            )
+            vaults = fetch_vaults(wallet, chain_id=self.curator.chain_id)
         except KrystalError as e:
             self.app.call_from_thread(self._error, str(e))
             return
-        self.app.call_from_thread(self._loaded, rows)
+        direct: list[Position] | None = None
+        err = ""
+        if self.curator.cloud_key:
+            try:
+                direct = fetch_positions(
+                    self.curator.cloud_key, wallet, chain_ids=[self.curator.chain_id]
+                )
+            except KrystalError as e:
+                err = str(e)
+        self.app.call_from_thread(self._loaded, vaults, direct, err)
 
     def _error(self, msg: str) -> None:
         self.query_one("#pos_status", Static).update(Text(f"ERROR {msg}", style="bold red"))
 
-    def _loaded(self, rows: list[Position]) -> None:
-        self.curator.units_used += POSITIONS_UNITS
-        self.curator.positions = rows
-        for p in rows:
+    def _loaded(self, vaults: list[Vault], direct: list[Position] | None, err: str) -> None:
+        self.curator.vaults = vaults
+        if direct is not None:
+            self.curator.units_used += POSITIONS_UNITS
+            self.curator.positions = direct
+        for p in self._open_positions():
             if not p.in_range:
                 self.app.notify(
                     f"{p.pair} OUT OF RANGE ({p.value:,.0f}$)",
-                    title="POSITION",
+                    title=p.vault or "WALLET",
                     severity="warning",
                     timeout=15,
                 )
-        self._fill(rows)
+        self._fill()
+        if err:
+            self.query_one("#pos_status", Static).update(
+                Text(f"vaults ok; cloud positions failed: {err}", style="yellow")
+            )
 
-    def _fill(self, rows: list[Position]) -> None:
+    def _open_positions(self) -> list[Position]:
+        return [p for v in self.curator.vaults for p in v.positions] + list(self.curator.positions)
+
+    def _closed_positions(self) -> list[Position]:
+        return [p for v in self.curator.vaults for p in v.closed]
+
+    # ---- render ---------------------------------------------------------
+    def _topbar(self) -> None:
+        w = self.curator.wallet or ""
+        opens = self._open_positions()
+        value = sum(p.value for p in opens)
+        pnl = sum(p.pnl for p in opens)
+        pend = sum(p.fee_pending for p in opens)
+        out = sum(1 for p in opens if not p.in_range)
+        e24 = sum(v.earning_24h for v in self.curator.vaults)
+        cloud = f"   CLOUD:{self.curator.units_used}u" if self.curator.cloud_key else ""
+        self.query_one("#pos_topbar", Static).update(
+            f" MY POSITIONS   {w[:6]}…{w[-4:]}   ROBINHOOD({self.curator.chain_id})   "
+            f"{len(self.curator.vaults)} vaults   {len(opens)} open, {out} out of range   "
+            f"VALUE ${value:,.0f}   PNL {pnl:+,.0f}$   PENDING {pend:,.0f}$   "
+            f"VAULT EARN 24H {e24:,.0f}${cloud}"
+        )
+
+    def _vault_lines(self) -> Text:
+        t = Text()
+        for v in self.curator.vaults:
+            wr = f"{v.win_rate * 100:.0f}%" if v.win_rate is not None else "-"
+            t.append(f" {v.name} ", style="bold black on #ffb000")
+            t.append(f" {v.vault_type} {'owned' if v.owned else 'joined'}  ", style="dim")
+            t.append(f"tvl {v.tvl:,.0f}$  ")
+            t.append(f"pnl {v.pnl:+,.0f}$  ", style="green" if v.pnl >= 0 else "red")
+            t.append(f"apr {v.apr:.1f}%  24h {v.earning_24h:+,.0f}$  30d {v.earning_30d:+,.0f}$  ")
+            t.append(
+                f"closed {len(v.closed)} (win {wr}, pnl {v.closed_pnl:+,.0f}$)  ",
+                style="dim",
+            )
+            t.append(f"risk {v.risk}  age {v.age_days:.0f}d\n", style="dim")
+        self.query_one("#pos_vaults", Static).update(t)
+
+    def _fill(self) -> None:
         table = self.query_one("#pos_table", DataTable)
         table.clear()
-        self._order = sorted(rows, key=lambda x: x.value, reverse=True)
+        rows = self._open_positions() + (self._closed_positions() if self.show_closed else [])
+        self._order = sorted(rows, key=lambda x: (x.status == "CLOSED", -x.value))
         for n, p in enumerate(self._order):
-            sc = self.curator.pool_for(p.pool_address)
+            sc = self.curator.pool_for(p.pool_address, p.pool_alt)
             pool = sc.pool if sc else None
             rp = p.range_pos
-            if rp is None:
-                rng = Text("?", style="dim")
+            if p.status == "CLOSED":
+                st = Text("CLOSED", style="dim")
+                rng = Text("", style="dim")
             else:
-                bar = ["─"] * 10
-                i = max(0, min(9, int(rp * 10)))
-                bar[i] = "●"
-                rng = Text("".join(bar), style="green" if 0 <= rp <= 1 else "red")
-            table.add_row(
-                Text(p.pair, style="bold white"),
-                Text(p.protocol, style="cyan"),
-                Text(
+                st = Text(
                     "IN" if p.in_range else p.status,
                     style="bold green" if p.in_range else "bold red",
-                ),
+                )
+                if rp is None:
+                    rng = Text("?", style="dim")
+                else:
+                    bar = ["─"] * 10
+                    bar[max(0, min(9, int(rp * 10)))] = "●"
+                    rng = Text("".join(bar), style="green" if 0 <= rp <= 1 else "red")
+            table.add_row(
+                Text(p.vault or "wallet", style="#ffb000"),
+                Text(p.pair, style="bold white"),
+                Text(p.protocol, style="cyan"),
+                st,
                 rng,
                 Text(f"{p.value:,.0f}", justify="right", style="bold"),
                 Text(f"{p.deposit:,.0f}", justify="right"),
                 _color_num(f"{p.pnl:+,.0f}", p.pnl, 0.0, -1e-9),
                 _color_num(f"{p.roi_pct:+.1f}", p.roi_pct, 0.0, -1e-9),
-                Text(f"{p.il:,.0f}", justify="right"),
-                Text(f"{p.fee_pending:,.0f}", justify="right", style="bold yellow"),
                 Text(f"{p.fee_claimed:,.0f}", justify="right"),
-                Text(f"{p.fee_apr:,.0f}%", justify="right"),
+                Text(f"{p.fee_pending:,.0f}", justify="right", style="bold yellow"),
+                Text(f"{p.fee_apr:,.1f}%", justify="right"),
                 Text(f"{p.age_days:.1f}d", justify="right"),
                 _grade_text(sc.grade) if sc else Text("-", style="dim"),
                 Text(f"{pool.fee_yield_24h * 100:.2f}" if pool else "-", justify="right"),
@@ -339,26 +389,35 @@ class PositionsScreen(Screen[str | None]):
                 key=f"{n}:{p.id}",
             )
         self._topbar()
+        self._vault_lines()
+        closed = "hide" if self.show_closed else "show"
         self.query_one("#pos_status", Static).update(
-            f"{len(rows)} positions   r refresh ({POSITIONS_UNITS} units)   enter = screen this pool   esc back"
+            f"{len(self._open_positions())} open, {len(self._closed_positions())} closed   r refresh   c {closed} closed   "
+            f"enter = screen this pool   o open vault   esc back"
         )
 
+    # ---- actions --------------------------------------------------------
     def _selected(self) -> Position | None:
-        table = self.query_one("#pos_table", DataTable)
-        i = table.cursor_row
-        order = getattr(self, "_order", [])
-        return order[i] if 0 <= i < len(order) else None
+        i = self.query_one("#pos_table", DataTable).cursor_row
+        return self._order[i] if 0 <= i < len(self._order) else None
+
+    def action_toggle_closed(self) -> None:
+        self.show_closed = not self.show_closed
+        self._fill()
 
     def action_open_url(self) -> None:
         p = self._selected()
-        if p:
-            sc = self.curator.pool_for(p.pool_address)
-            webbrowser.open(sc.pool.url if sc else "https://defi.krystal.app/account")
+        if not p:
+            return
+        v = next((v for v in self.curator.vaults if v.name == p.vault), None)
+        sc = self.curator.pool_for(p.pool_address, p.pool_alt)
+        webbrowser.open(v.url if v else sc.pool.url if sc else "https://defi.krystal.app/account")
 
     def action_jump(self) -> None:
         p = self._selected()
         if p:
-            self.dismiss(p.pool_address)
+            sc = self.curator.pool_for(p.pool_address, p.pool_alt)
+            self.dismiss(sc.pool.address if sc else p.pool_address)
 
     def on_data_table_row_selected(self, _: DataTable.RowSelected) -> None:
         self.action_jump()
@@ -405,7 +464,8 @@ class CuratorApp(App[None]):
         super().__init__()
         self.wallet = wallet or api.wallet()
         self.units_used = 0  # Cloud API units spent this session
-        self.positions: list[Position] = []
+        self.positions: list[Position] = []  # direct wallet positions (Cloud API)
+        self.vaults: list[Vault] = []  # vault positions (public API)
         self.position_size = size
         self.refresh_seconds = refresh_seconds if refresh_seconds > 0 else 300
         self.auto = refresh_seconds > 0
@@ -540,7 +600,7 @@ class CuratorApp(App[None]):
         rows = curate(self.pools, self.profile, quote=self.quote, protocols=protos)
         if self.find_text:
             ft = self.find_text.upper()
-            rows = [r for r in rows if ft in r.pool.pair.upper() or ft in r.pool.address]
+            rows = [r for r in rows if ft in r.pool.pair.upper() or ft in r.pool.address.upper()]
         if self.watch_only:
             rows = [r for r in rows if self.store.is_watched(r.pool)]
         for r in rows:
@@ -1041,13 +1101,8 @@ class CuratorApp(App[None]):
             self._set_sort(col)
 
     def action_positions(self) -> None:
-        missing = []
-        if not self.cloud_key:
-            missing.append(f"{api.CLOUD_KEY_ENV}=<key from cloud.krystal.app>")
         if not self.wallet:
-            missing.append(f"{api.WALLET_ENV}=0x… (or --wallet)")
-        if missing:
-            msg = "add to .env: " + "   ".join(missing)
+            msg = f"add to .env: {api.WALLET_ENV}=0x… (or --wallet)"
             self._set_status(msg)
             self.notify(msg, title="POSITIONS NEEDS", severity="error", timeout=12)
             return
@@ -1057,21 +1112,27 @@ class CuratorApp(App[None]):
         """Jump the screener to the pool the user picked in the positions view."""
         if not pool_key:
             return
-        addr = pool_key
-        self.find_text = addr
+        self.find_text = pool_key
         box = self.main.query_one("#find", Input)
-        box.value = addr
+        box.value = pool_key
         box.add_class("visible")
         self._rebuild()
+        if not self.rows:  # widen until the pool shows: any quote, then degen
+            self.quote = None
+            self._rebuild()
+        if not self.rows:
+            self.profile = PROFILES["degen"]
+            self._rebuild()
         if not self.rows:
             self.call_after_refresh(
-                self._set_status, f"pool {addr[:10]}… not in this profile — try 4 (degen) or u"
+                self._set_status, f"pool {pool_key[:10]}… fails even the degen floor (tvl/vol)"
             )
 
-    def pool_for(self, address: str, protocol: str = "") -> Scored | None:
-        """Screener view of a pool by address (any profile filter ignored)."""
+    def pool_for(self, address: str, alt: str = "") -> Scored | None:
+        """Screener view of a pool by address / v4 id (profile filters ignored)."""
+        keys = {k for k in (address, alt) if k}
         for p in self.pools:
-            if p.address == address and (not protocol or p.protocol == protocol):
+            if p.address in keys:
                 sc = score_pool(p, self.profile)
                 sc.sim = simulate(p, self.position_size)
                 return sc

@@ -72,6 +72,59 @@ Weighted per profile:
 `RK` (A–E) is a profile-independent risk grade. Flags: `NEW` (<1d history), `SPIKE`,
 `FADING`, `QUIET-1H`, `DYN-FEE`, `INCENTIVE`, `NO-AUTO`, `BLUE-CHIP`.
 
+## My positions (`P`)
+
+Needs only your wallet — `KRYSTAL_WALLET=0x…` in `.env` (gitignored) or `--wallet`. Krystal
+vaults (auto-farm and VaultX) are read from the public API: every vault you own or joined,
+with its TVL, PnL, APR, 24h/30d earnings, risk score and a closed-position track record
+(count, win rate, realised PnL), and every open position inside them: value, deposit, PnL,
+ROI, fees, pending fees, APR, age, a range bar (● = current price between min and max) and,
+joined from the screener, the pool's grade / fee yield / volatility so you see when a pool
+you are in has decayed. `c` toggles closed positions, `Enter` jumps the screener to that
+pool, `o` opens the vault, out-of-range positions raise a toast.
+
+With a Cloud key (`KRYSTAL_CLOUD_KEY`, https://cloud.krystal.app) the view also lists LP
+NFTs held directly by the wallet — 10 units per refresh, on demand only (free tier 50,000).
+The top bar counts units spent. `scan --tx` uses the same key for 24h transaction counts.
+
+## Position simulator
+
+`--size 50000` (or `$` in the TUI) sets your position size. Every row then shows what *you*
+would earn, not the pool headline:
+
+- `MY$/D` – pool fee24 × your share, where share = size / (tvl + size) (dilution-adjusted)
+- `SHARE` – your fraction of the pool after entering; ≥25 % flagged (you become the pool)
+- `NET$/D` – `MY$/D` minus an impermanent-loss estimate of σ²/8 per day (full-range
+  lognormal approximation, σ = Krystal `priceVolatility` treated as daily)
+
+The detail panel adds APR at your size, 7d-basis fee, fee/IL coverage ratio, a suggested
+±range that holds 68 % / 95 % of 7-day price outcomes (σ√7, 2σ√7), and how many days of
+fees cover a 2σ move. Concentrated ranges scale fees and IL by roughly the same factor, so
+the fee/IL ratio is the pool-selection signal; the range is the position-sizing one.
+
+## Profiles
+
+| key | tvl ≥ | vol24 ≥ | σ ≤ | dd24 ≤ | tier ≤ | new pools | lp-auto |
+|---|---|---|---|---|---|---|---|
+| conservative | 1M | 1M | 15% | 15% | 1% | no | required |
+| balanced | 250K | 250K | 40% | 35% | 3% | no | required |
+| aggressive | 50K | 100K | 70% | 60% | 6% | yes | required |
+| degen | 10K | 25K | – | – | – | yes | – |
+
+## Score (0–100)
+
+Weighted per profile:
+
+- **yield** – `min(fee24/tvl, fee7d/7/tvl)`; the lower of today vs 7-day average, so one spike day can't carry it
+- **turnover** – `vol24 / tvl`; how hard the capital is actually working
+- **consistency** – `fee24 / (fee7d/7)`; 0.7–1.5 is steady, >1.5 spike, <0.7 fading
+- **liveness** – `vol1h*24 / vol24`; is it trading *now*
+- **depth** – log-scaled TVL above the profile floor
+- **risk** – inverse of price volatility and 24h drawdown
+
+`RK` (A–E) is a profile-independent risk grade. Flags: `NEW` (<1d history), `SPIKE`,
+`FADING`, `QUIET-1H`, `DYN-FEE`, `INCENTIVE`, `NO-AUTO`, `BLUE-CHIP`.
+
 ## Cloud API: your positions (`P`)
 
 Needs a key from https://cloud.krystal.app and your wallet. Put both in `.env` (gitignored)

@@ -1,0 +1,154 @@
+"""Krystal vaults (public API, no key): the vaults a wallet owns or joined and the LP
+positions ("strategies") inside them. This is where an auto-farm / vault manager's
+positions live — the wallet itself holds vault shares, not the LP NFTs.
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+
+import httpx
+
+from .api import _HEADERS, KrystalError
+from .models import fnum
+from .positions import Position
+
+VAULTS = "https://api.krystal.app/all/v1/vaults"
+
+
+@dataclass(slots=True)
+class Vault:
+    chain_id: int
+    address: str
+    name: str
+    vault_type: str  # autofarm / vaultx / ...
+    owned: bool
+    tvl: float
+    pnl: float
+    apr: float
+    fee_generated: float
+    earning_24h: float
+    earning_30d: float
+    risk: str
+    age_days: float
+    my_value: float
+    my_deposit: float
+    my_withdrawn: float
+    positions: list[Position] = field(default_factory=list)
+    closed: list[Position] = field(default_factory=list)
+
+    @property
+    def url(self) -> str:
+        return f"https://defi.krystal.app/vaults/{self.chain_id}/{self.address}"
+
+    @property
+    def closed_pnl(self) -> float:
+        return sum(p.pnl for p in self.closed)
+
+    @property
+    def win_rate(self) -> float | None:
+        if not self.closed:
+            return None
+        return sum(1 for p in self.closed if p.pnl > 0) / len(self.closed)
+
+
+def _get(url: str, params: dict | None = None) -> dict | list:
+    try:
+        r = httpx.get(url, params=params, headers=_HEADERS, timeout=30)
+        r.raise_for_status()
+        return r.json()
+    except (httpx.HTTPError, ValueError) as e:
+        raise KrystalError(f"vaults: {e}") from e
+
+
+def _parse_vault(d: dict, *, owned: bool) -> Vault:
+    up = d.get("userPerformance") or {}
+    return Vault(
+        chain_id=int(d.get("chainId") or 0),
+        address=(d.get("vaultAddress") or "").lower(),
+        name=d.get("name") or "?",
+        vault_type=d.get("vaultType") or "",
+        owned=owned,
+        tvl=fnum(d.get("tvl")),
+        pnl=fnum(d.get("pnl")),
+        apr=fnum(d.get("apr")),
+        fee_generated=fnum(d.get("feeGenerated")),
+        earning_24h=fnum(d.get("earning24h")),
+        earning_30d=fnum(d.get("earning30d")),
+        risk=d.get("riskScore") or "",
+        age_days=fnum(d.get("ageInSecond")) / 86400,
+        my_value=fnum(up.get("value")),
+        my_deposit=fnum(up.get("totalDepositValue")),
+        my_withdrawn=fnum(up.get("totalWithdrawValue")),
+    )
+
+
+def parse_strategy(s: dict, vault_name: str) -> Position:
+    toks = s.get("tokens") or []
+    t0 = (toks[0].get("symbol") if toks else None) or "?"
+    t1 = (toks[1].get("symbol") if len(toks) > 1 else None) or "?"
+    pool = s.get("pool") or {}
+    proto = s.get("protocol") or {}
+    pending = sum(
+        fnum(((x.get("quotes") or {}).get("usd") or {}).get("value"))
+        for x in s.get("feesPending") or []
+    )
+    age = fnum(s.get("ageInSecond"))
+    return Position(
+        id=f"{vault_name}:{s.get('strategyId')}",
+        chain_id=int(s.get("chainId") or 0),
+        # v4 pools are keyed by their 32-byte id in the LP explorer, v2/v3 by address
+        pool_address=(pool.get("id") or pool.get("poolAddress") or "").lower(),
+        pool_alt=(pool.get("poolAddress") or "").lower(),
+        protocol=proto.get("key") or pool.get("protocol") or "",
+        token0=t0,
+        token1=t1,
+        status=s.get("status") or "",
+        value=fnum(s.get("lpValue")),
+        deposit=fnum(s.get("initialDepositValue")),
+        withdrawn=0.0,
+        pnl=fnum(s.get("pnl")),
+        roi_pct=fnum(s.get("roi")),
+        il=0.0,
+        fee_pending=pending,
+        fee_claimed=fnum(s.get("feeGenerated")),
+        reward_pending=fnum(s.get("farmRewardPending")),
+        fee_apr=fnum(s.get("apr")),
+        total_apr=fnum(s.get("apr")),
+        min_price=fnum(s.get("minPrice")),
+        max_price=fnum(s.get("maxPrice")),
+        current_price=fnum(s.get("currentPoolPrice")) or None,
+        opened_ts=int(time.time() - age) if age else 0,
+        amounts=[],
+        vault=vault_name,
+    )
+
+
+def fetch_vaults(wallet: str, *, chain_id: int | None = None) -> list[Vault]:
+    """Owned (both auto-farm and regular) plus joined vaults, with their positions."""
+    seen: dict[str, Vault] = {}
+    queries = [
+        ({"ownerAddress": wallet, "isAutoFarmVault": "true", "perPage": 100}, True),
+        ({"ownerAddress": wallet, "isAutoFarmVault": "false", "perPage": 100}, True),
+        ({"userAddress": wallet, "perPage": 100}, False),
+        ({"userAddress": wallet, "isAutoFarmVault": "true", "perPage": 100}, False),
+    ]
+    for params, owned in queries:
+        data = _get(f"{VAULTS}/profile", params)
+        for d in (data.get("data") if isinstance(data, dict) else None) or []:
+            v = _parse_vault(d, owned=owned)
+            if chain_id and v.chain_id != chain_id:
+                continue
+            if v.address in seen:
+                seen[v.address].owned |= owned
+                continue
+            seen[v.address] = v
+    for v in seen.values():
+        detail = _get(f"{VAULTS}/{v.chain_id}/{v.address}")
+        if not isinstance(detail, dict):
+            continue
+        for s in detail.get("strategies") or []:
+            p = parse_strategy(s, v.name)
+            (v.closed if p.status == "CLOSED" else v.positions).append(p)
+    return sorted(seen.values(), key=lambda v: v.tvl, reverse=True)

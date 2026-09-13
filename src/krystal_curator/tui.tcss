@@ -158,6 +158,12 @@ PositionsScreen {
     border-title-style: bold;
     background: #000000;
 }
+#pos_vaults {
+    height: auto;
+    max-height: 6;
+    background: #000000;
+    padding: 0 1;
+}
 #pos_status {
     height: 1;
     background: #101010;

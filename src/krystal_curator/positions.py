@@ -38,6 +38,8 @@ class Position:
     current_price: float | None
     opened_ts: int
     amounts: list[tuple[str, float]] = field(default_factory=list)  # (symbol, usd)
+    vault: str = ""  # vault name when the position lives inside a Krystal vault
+    pool_alt: str = ""  # alternate pool key (v4: contract address next to the pool id)
 
     @property
     def pair(self) -> str:
