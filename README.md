@@ -18,7 +18,9 @@ uv run krystal-curator scan --quote any --protocol ramsescl
 ```
 
 TUI keys: `1-4` profile · `u` toggle USDG-only · `p` cycle protocol · `s` next sort column · `S` asc/desc · click a header to sort by it ·
-`r` refresh · `o` open pool on Krystal · `e` export CSV to `exports/` · `/` find · `q` quit.
+`r` refresh · `o` open pool on Krystal · `w`/`x`/`t`/`d` open website / X / Telegram / Discord of the base token · `e` export CSV to `exports/` · `/` find · `q` quit.
+
+The detail panel shows both token logos (Kitty/Sixel graphics where the terminal supports them, unicode half-blocks elsewhere) and clickable social links. Logos and links come from DexScreener (no key), cached under the user cache dir for 6h.
 
 ## Profiles
 

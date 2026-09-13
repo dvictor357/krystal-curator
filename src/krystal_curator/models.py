@@ -76,6 +76,10 @@ class Pool:
     dynamic_fee: bool
     tag: str
     incentives: list[Incentive] = field(default_factory=list)
+    token0_addr: str = ""
+    token1_addr: str = ""
+    token0_logo: str = ""
+    token1_logo: str = ""
     tx24: int | None = None  # only filled when Cloud API key present
 
     # ---- identity -------------------------------------------------------
@@ -176,6 +180,10 @@ class Pool:
             address=(item.get("poolAddress") or "").lower(),
             token0=t0.get("symbol") or "?",
             token1=t1.get("symbol") or "?",
+            token0_addr=(t0.get("address") or "").lower(),
+            token1_addr=(t1.get("address") or "").lower(),
+            token0_logo=t0.get("logo") or "",
+            token1_logo=t1.get("logo") or "",
             fee_tier_pct=fnum(item.get("feeTier")),
             tvl=fnum(item.get("tvlUsd", item.get("tvl"))),
             s1h=Stat.parse(item.get("stat1h")),

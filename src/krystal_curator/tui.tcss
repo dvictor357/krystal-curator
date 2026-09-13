@@ -52,6 +52,22 @@ DataTable > .datatable--fixed {
     border-title-style: bold;
     padding: 0 1;
     background: #000000;
+}
+#hero {
+    height: 8;
+    margin-bottom: 1;
+}
+#logo0, #logo1 {
+    width: 16;
+    height: 8;
+    margin-right: 1;
+}
+#hero_text {
+    width: 1fr;
+    height: 8;
+}
+#detail_body {
+    height: 1fr;
     overflow-y: auto;
 }
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import warnings
 import webbrowser
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -16,11 +17,16 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Footer, Input, Static
+from textual_image.widget import Image
 
 from . import api
+from .enrich import TokenInfo, TokenMeta
 from .models import Pool
 from .profiles import PROFILES, RiskProfile
 from .scoring import Scored, curate
+
+# textual-image renders palette PNGs fine; PIL just complains about the conversion.
+warnings.filterwarnings("ignore", message="Palette images with Transparency", module="PIL")
 
 COLUMNS = (
     "#",
@@ -116,6 +122,10 @@ class CuratorApp(App[None]):
         Binding("S", "reverse_sort", "ASC/DESC"),
         Binding("r", "refresh", "REFRESH"),
         Binding("o", "open_url", "OPEN"),
+        Binding("w", "open_link('WEB')", "WEB"),
+        Binding("x", "open_link('X')", "X"),
+        Binding("t", "open_link('TG')", "TG"),
+        Binding("d", "open_link('DC')", "DC"),
         Binding("e", "export_csv", "CSV"),
         Binding("slash", "find", "FIND", key_display="/"),
         Binding("escape", "clear_find", "", show=False),
@@ -144,6 +154,8 @@ class CuratorApp(App[None]):
         self.find_text = ""
         self.last_refresh: datetime | None = None
         self.cloud_key = api.cloud_key()
+        self.meta = TokenMeta()
+        self.infos: dict[str, TokenInfo] = {}  # for the selected pool, by address
 
     # ---- layout ---------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -153,9 +165,13 @@ class CuratorApp(App[None]):
                 table = DataTable(id="table", cursor_type="row", zebra_stripes=False)
                 table.border_title = "POOL SCREEN"
                 yield table
-                detail = Static("", id="detail")
-                detail.border_title = "POOL DETAIL"
-                yield detail
+                with Vertical(id="detail") as detail:
+                    detail.border_title = "POOL DETAIL"
+                    with Horizontal(id="hero"):
+                        yield Image(None, id="logo0")
+                        yield Image(None, id="logo1")
+                        yield Static("", id="hero_text")
+                    yield Static("", id="detail_body")
             yield Input(placeholder="find pair / token …", id="find")
             yield Static("", id="status")
         yield Footer()
@@ -339,12 +355,75 @@ class CuratorApp(App[None]):
             "",
         )
         t.add_row(self.profile.name, b)
-        self.query_one("#detail", Static).update(t)
+        self.query_one("#detail_body", Static).update(t)
+        self._render_hero(s)
+        self._enrich(p)
+
+    # ---- token metadata (logo + links) ----------------------------------
+    def _token_infos(self, p: Pool) -> tuple[TokenInfo | None, TokenInfo | None]:
+        return self.infos.get(p.token0_addr), self.infos.get(p.token1_addr)
+
+    def _render_hero(self, s: Scored) -> None:
+        p = s.pool
+        i0, i1 = self._token_infos(p)
+        t = Text()
+        t.append(f"{p.pair}\n", style="bold white")
+        for sym, info in ((p.token0, i0), (p.token1, i1)):
+            name = info.name if info and info.name and info.name.upper() != sym.upper() else ""
+            t.append(f"{sym}", style="bold #ffb000")
+            if name:
+                t.append(f"  {name}", style="dim")
+            t.append("\n")
+            links = info.links if info else []
+            if links:
+                for label, url in links:
+                    t.append(f" {label} ", style=f"bold black on #ffb000 link {url}")
+                    t.append(" ")
+                t.append("\n")
+            elif info is None:
+                t.append("  …\n", style="dim")
+            else:
+                t.append("  no links\n", style="dim")
+        self.query_one("#hero_text", Static).update(t)
+
+    @work(thread=True, exclusive=True, group="enrich")
+    def _enrich(self, p: Pool) -> None:
+        addrs = [a for a in (p.token0_addr, p.token1_addr) if a]
+        infos = self.meta.fetch(p.chain_id, addrs)
+        logos: dict[str, Path | None] = {}
+        for addr, fallback in ((p.token0_addr, p.token0_logo), (p.token1_addr, p.token1_logo)):
+            info = infos.get(addr)
+            url = (info.image_url if info else "") or fallback
+            logos[addr] = self.meta.logo_path(url)
+        self.call_from_thread(self._apply_enrich, p, infos, logos)
+
+    def _apply_enrich(
+        self, p: Pool, infos: dict[str, TokenInfo], logos: dict[str, Path | None]
+    ) -> None:
+        cur = self._selected()
+        if cur is None or cur.pool.address != p.address:
+            return  # selection moved on
+        self.infos = infos
+        for wid, addr in (("#logo0", p.token0_addr), ("#logo1", p.token1_addr)):
+            img = self.query_one(wid, Image)
+            path = logos.get(addr)
+            try:
+                img.image = str(path) if path else None
+            except (OSError, ValueError):  # corrupt / unsupported image bytes
+                img.image = None
+        self._render_hero(cur)
 
     # ---- events ---------------------------------------------------------
     def on_data_table_row_highlighted(self, ev: DataTable.RowHighlighted) -> None:
         if ev.cursor_row is not None and 0 <= ev.cursor_row < len(self.rows):
-            self._render_detail(self.rows[ev.cursor_row])
+            s = self.rows[ev.cursor_row]
+            # show cached meta immediately, else blank until the worker returns
+            self.infos = {
+                a: i
+                for a in (s.pool.token0_addr, s.pool.token1_addr)
+                if (i := self.meta.get(s.pool.chain_id, a))
+            }
+            self._render_detail(s)
 
     def on_input_changed(self, ev: Input.Changed) -> None:
         self.find_text = ev.value.strip()
@@ -406,6 +485,28 @@ class CuratorApp(App[None]):
         if s:
             webbrowser.open(s.pool.url)
             self._set_status(f"opened {s.pool.pair}")
+
+    def action_open_link(self, label: str) -> None:
+        s = self._selected()
+        if s is None:
+            return
+        p = s.pool
+        # prefer the non-USDG side, then the other token
+        order = (
+            [p.token1_addr, p.token0_addr]
+            if p.token0.upper() == "USDG"
+            else [p.token0_addr, p.token1_addr]
+        )
+        for addr in order:
+            info = self.infos.get(addr)
+            if not info:
+                continue
+            for lab, url in info.links:
+                if lab == label:
+                    webbrowser.open(url)
+                    self._set_status(f"opened {label} {url}")
+                    return
+        self._set_status(f"no {label} link for {p.pair}")
 
     def action_export_csv(self) -> None:
         if not self.rows:
