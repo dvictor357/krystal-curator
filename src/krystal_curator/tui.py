@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import webbrowser
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
@@ -20,16 +21,6 @@ from . import api
 from .models import Pool
 from .profiles import PROFILES, RiskProfile
 from .scoring import Scored, curate
-
-SORT_KEYS: list[tuple[str, str]] = [
-    ("score", "SCORE"),
-    ("fee24", "FEE24 $"),
-    ("yield", "FEE/TVL 24H"),
-    ("turnover", "VOL/TVL"),
-    ("vol24", "VOL24 $"),
-    ("tvl", "TVL"),
-    ("apr7d", "APR 7D"),
-]
 
 COLUMNS = (
     "#",
@@ -86,17 +77,29 @@ def _grade_text(g: str) -> Text:
     return Text(g, style=f"bold {colors.get(g, 'white')}", justify="center")
 
 
-def _sort_value(s: Scored, key: str) -> float:
-    p = s.pool
-    return {
-        "score": s.score,
-        "fee24": p.s24h.fee,
-        "yield": p.fee_yield_24h,
-        "turnover": p.turnover_24h,
-        "vol24": p.s24h.volume,
-        "tvl": p.tvl,
-        "apr7d": p.s7d.apr,
-    }[key]
+# column label -> sort key. Columns missing here are not sortable.
+SORTABLE: dict[str, Callable[[Scored], float | str]] = {
+    "PAIR": lambda s: s.pool.pair,
+    "PROTO": lambda s: s.pool.protocol,
+    "TIER%": lambda s: s.pool.fee_tier_pct,
+    "TVL": lambda s: s.pool.tvl,
+    "VOL24": lambda s: s.pool.s24h.volume,
+    "FEE24": lambda s: s.pool.s24h.fee,
+    "FEE/D 7D": lambda s: s.pool.s7d.fee / 7,
+    "Y24%": lambda s: s.pool.fee_yield_24h,
+    "Y7D%": lambda s: s.pool.fee_yield_7d_daily,
+    "V/TVL": lambda s: s.pool.turnover_24h,
+    "CONS": lambda s: s.pool.consistency,
+    "LIVE": lambda s: s.pool.liveness,
+    "σ%": lambda s: s.pool.volatility,
+    "DD24": lambda s: s.pool.drawdown24h,
+    "APR7D": lambda s: s.pool.s7d.apr,
+    "SCORE": lambda s: s.score,
+    "RK": lambda s: s.grade,
+}
+SORT_ORDER = [c for c in COLUMNS if c in SORTABLE]
+# text columns and risk columns read naturally ascending
+ASC_DEFAULT = {"PAIR", "PROTO", "σ%", "RK"}
 
 
 class CuratorApp(App[None]):
@@ -110,6 +113,7 @@ class CuratorApp(App[None]):
         Binding("u", "toggle_quote", "USDG"),
         Binding("p", "cycle_protocol", "PROTO"),
         Binding("s", "cycle_sort", "SORT"),
+        Binding("S", "reverse_sort", "ASC/DESC"),
         Binding("r", "refresh", "REFRESH"),
         Binding("o", "open_url", "OPEN"),
         Binding("e", "export_csv", "CSV"),
@@ -133,7 +137,8 @@ class CuratorApp(App[None]):
         self.quote_default = quote or "USDG"
         self.protocol_filter: str | None = None  # None = all
         self.available_protocols: list[str] = sorted(protocols) if protocols else []
-        self.sort_idx = 0
+        self.sort_col = "SCORE"
+        self.sort_desc = True
         self.pools: list[Pool] = []
         self.rows: list[Scored] = []
         self.find_text = ""
@@ -157,7 +162,6 @@ class CuratorApp(App[None]):
 
     def on_mount(self) -> None:
         table = self.query_one("#table", DataTable)
-        table.add_columns(*COLUMNS)
         table.fixed_columns = 2
         self._render_topbar()
         self._set_status("loading …")
@@ -186,14 +190,26 @@ class CuratorApp(App[None]):
         if self.find_text:
             ft = self.find_text.upper()
             rows = [r for r in rows if ft in r.pool.pair.upper() or ft in r.pool.address]
-        key = SORT_KEYS[self.sort_idx][0]
-        rows.sort(key=lambda s: _sort_value(s, key), reverse=True)
+        rows.sort(key=SORTABLE[self.sort_col], reverse=self.sort_desc)
         return rows
+
+    def _column_labels(self) -> list[Text]:
+        out: list[Text] = []
+        for c in COLUMNS:
+            if c == self.sort_col:
+                out.append(
+                    Text(f"{c}{'▼' if self.sort_desc else '▲'}", style="bold white on #5a3a00")
+                )
+            else:
+                out.append(Text(c))
+        return out
 
     def _rebuild(self) -> None:
         self.rows = self._current_rows()
         table = self.query_one("#table", DataTable)
-        table.clear()
+        table.clear(columns=True)
+        for label, name in zip(self._column_labels(), COLUMNS, strict=True):
+            table.add_column(label, key=name)
         for i, s in enumerate(self.rows, 1):
             p = s.pool
             table.add_row(
@@ -223,7 +239,7 @@ class CuratorApp(App[None]):
         self._render_topbar()
         self._set_status(
             f"universe {len(self.pools)}  →  {len(self.rows)} pass   "
-            f"sort {SORT_KEYS[self.sort_idx][1]}   "
+            f"sort {self.sort_col} {'desc' if self.sort_desc else 'asc'}   "
             f"{self.profile.blurb}"
         )
         if self.rows:
@@ -357,9 +373,29 @@ class CuratorApp(App[None]):
         self.protocol_filter = opts[(i + 1) % len(opts)]
         self._rebuild()
 
-    def action_cycle_sort(self) -> None:
-        self.sort_idx = (self.sort_idx + 1) % len(SORT_KEYS)
+    def _set_sort(self, col: str) -> None:
+        if col == self.sort_col:
+            self.sort_desc = not self.sort_desc
+        else:
+            self.sort_col = col
+            self.sort_desc = col not in ASC_DEFAULT
         self._rebuild()
+
+    def action_cycle_sort(self) -> None:
+        i = SORT_ORDER.index(self.sort_col)
+        col = SORT_ORDER[(i + 1) % len(SORT_ORDER)]
+        self.sort_col = col
+        self.sort_desc = col not in ASC_DEFAULT
+        self._rebuild()
+
+    def action_reverse_sort(self) -> None:
+        self.sort_desc = not self.sort_desc
+        self._rebuild()
+
+    def on_data_table_header_selected(self, ev: DataTable.HeaderSelected) -> None:
+        col = str(ev.column_key.value)
+        if col in SORTABLE:
+            self._set_sort(col)
 
     def action_refresh(self) -> None:
         self._set_status("refreshing …")

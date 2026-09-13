@@ -17,7 +17,7 @@ uv run krystal-curator scan --top 20 --profile conservative --csv out.csv
 uv run krystal-curator scan --quote any --protocol ramsescl
 ```
 
-TUI keys: `1-4` profile · `u` toggle USDG-only · `p` cycle protocol · `s` cycle sort ·
+TUI keys: `1-4` profile · `u` toggle USDG-only · `p` cycle protocol · `s` next sort column · `S` asc/desc · click a header to sort by it ·
 `r` refresh · `o` open pool on Krystal · `e` export CSV to `exports/` · `/` find · `q` quit.
 
 ## Profiles
