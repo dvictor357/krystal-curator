@@ -112,11 +112,60 @@ def build_parser(cfg: Config) -> argparse.ArgumentParser:
     )
     bt.add_argument("--days", type=float, default=14, help="history window in days (default 14)")
 
+    setup = sub.add_parser(
+        "setup", help="Krystal Automation values to enter for each open position"
+    )
+    _common(setup, cfg)
+
     init = sub.add_parser("init", help="write config.toml and .env templates here")
     init.add_argument("--force", action="store_true", help="overwrite existing files")
     sub.add_parser("config", help="show the effective configuration and where it came from")
     sub.add_parser("status", help="daemon heartbeat, db size, last alerts")
     return ap
+
+
+def run_setup(args: argparse.Namespace) -> int:
+    from .autoconfig import recommend
+    from .monitor import Monitor
+    from .store import Store
+    from .vaults import fetch_vaults
+
+    con = Console(width=None if sys.stdout.isatty() else 150)
+    wallet = args.wallet or api.wallet()
+    if not wallet:
+        con.print(f"[red]need a wallet: --wallet or {api.WALLET_ENV}[/red]")
+        return 2
+    try:
+        pools = api.fetch_pools(args.chain)
+        vaults = fetch_vaults(wallet, chain_id=args.chain)
+    except api.KrystalError as e:
+        con.print(f"[red]{e}[/red]")
+        return 2
+    mon = Monitor(Store(), profile=PROFILES[args.profile], pools=pools, vaults=vaults)
+    opens = mon.open_positions()
+    if not opens:
+        con.print("[yellow]no open positions[/yellow]")
+        return 1
+    for p in opens:
+        su = recommend(p, mon.sigma_for(p), PROFILES[args.profile])
+        con.rule(
+            f"[bold #ffb000]{p.vault or 'wallet'}  {p.pair}  [{p.protocol}]  {p.value:,.0f}$  "
+            f"range {p.min_price:,.4g}–{p.max_price:,.4g}  now {p.current_price or 0:,.4g}"
+        )
+        t = Table(box=box.SIMPLE_HEAD, header_style="bold #ffb000", pad_edge=False)
+        t.add_column("SECTION", style="#ffb000")
+        t.add_column("FIELD", style="bold")
+        t.add_column("VALUE")
+        t.add_column("WHY", style="dim")
+        for section, fs in su.by_section().items():
+            for i, f in enumerate(fs):
+                t.add_row(section if i == 0 else "", f.label, f.value, f.why)
+        con.print(t)
+    con.print(
+        f"[dim]profile {args.profile}: ±σ·√{ {'conservative': 14, 'balanced': 7, 'aggressive': 3, 'degen': 1}[args.profile] }d range; "
+        "rerun with --profile to change the risk stance[/dim]"
+    )
+    return 0
 
 
 def run_init(args: argparse.Namespace) -> int:
@@ -450,6 +499,8 @@ def main(argv: list[str] | None = None) -> int:
         args.protocol = list(cfg.protocols)
     if args.cmd == "init":
         return run_init(args)
+    if args.cmd == "setup":
+        return run_setup(args)
     if args.cmd == "config":
         return run_config(cfg)
     if args.cmd == "status":

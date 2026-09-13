@@ -21,6 +21,21 @@ from .vaults import fetch_vaults
 log = logging.getLogger("krystal.watch")
 
 
+def setup_message(p, sigma, profile) -> str:
+    """Telegram text: Krystal Automation values for a newly opened position."""
+    from .autoconfig import recommend
+
+    su = recommend(p, sigma, profile)
+    lines = [
+        f"🆕 {p.vault or 'wallet'} {p.pair} [{p.protocol}] {p.value:,.0f}$",
+        f"Automation setup ({profile.key}, ±{su.range_pct:g}% / ~{su.hold_days:g}d):",
+    ]
+    for section, fs in su.by_section().items():
+        lines.append(f"— {section}")
+        lines += [f"  {f.label}: {f.value}" for f in fs]
+    return "\n".join(lines)
+
+
 def run_watch(
     *,
     chain_id: int,
@@ -66,6 +81,7 @@ def run_watch(
     signal.signal(signal.SIGTERM, _sig)
 
     last_digest_day: str | None = None
+    seen_ids: set[str] = set()
     while not stop:
         t0 = time.time()
         try:
@@ -113,6 +129,15 @@ def run_watch(
                 when = datetime.now(UTC).strftime("%m-%d %H:%M")
                 prev += [{"when": when, "title": a.title, "text": a.text} for a in alerts]
                 store.kv_set("watch.last_alerts", prev[-50:])
+            new_ids = {p.id for p in opens} - seen_ids
+            if seen_ids and new_ids:
+                for p in opens:
+                    if p.id in new_ids:
+                        msg = setup_message(p, mon.sigma_for(p), mon.profile)
+                        log.info("new position %s — setup suggestion sent", p.pair)
+                        if tg:
+                            tg.send(msg)
+            seen_ids |= {p.id for p in opens}
             if tg and alerts:
                 icon = {"error": "🔴", "warning": "🟠", "information": "🟢"}
                 tg.send(

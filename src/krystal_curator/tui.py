@@ -30,6 +30,7 @@ from . import api
 from .advisor import Advice, advise, price_ladder
 from .analytics import idle_capital, real_roi, report_markdown, track_record
 from .api import KrystalError
+from .autoconfig import recommend
 from .config import Config
 from .enrich import Flow, FlowCache, TokenInfo, TokenMeta
 from .models import Pool
@@ -828,6 +829,30 @@ class PositionsScreen(Screen[str | None]):
                         style="dim",
                     ),
                     r,
+                ),
+            )
+            t.add_row("", "")
+
+        # ---- what to type into Krystal's Automation form
+        if p.status != "CLOSED":
+            su = recommend(p, c.sigma_for(p), c.profile)
+            k = Table(box=None, pad_edge=False, expand=True, header_style="bold #ffb000")
+            k.add_column("SECTION", no_wrap=True, style="#ffb000")
+            k.add_column("FIELD", no_wrap=True, style="bold white")
+            k.add_column("VALUE", style="white")
+            k.add_column("WHY", style="grey58")
+            for section, fs in su.by_section().items():
+                for i, f in enumerate(fs):
+                    k.add_row(section if i == 0 else "", f.label, f.value, f.why)
+            t.add_row(
+                "KRYSTAL SETUP",
+                Group(
+                    Text(
+                        f"copy into Automation → this position   ({c.profile.name.lower()}: "
+                        f"±{su.range_pct:g}% range for ~{su.hold_days:g}d, 1-4 to change)",
+                        style="dim",
+                    ),
+                    k,
                 ),
             )
             t.add_row("", "")

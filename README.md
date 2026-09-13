@@ -24,7 +24,7 @@ Precedence: **CLI flag > env var (`KRYSTAL_*`) > `config.toml` > default**. Secr
 `--config`, `$KRYSTAL_CONFIG`, `./config.toml`, then the user config dir.
 `KRYSTAL_DATA_DIR` moves the sqlite db / cache (used by the container).
 
-Commands: `tui` (default) · `scan` · `watch` · `backtest` · `init` · `config` · `status`.
+Commands: `tui` (default) · `scan` · `watch` · `setup` · `backtest` · `init` · `config` · `status`.
 
 ```sh
 uv run krystal-curator --profile aggressive
@@ -102,6 +102,12 @@ The detail pane shows a log-scale price ladder, each range edge's distance in %,
 units (pool volatility) and in expected days for a random walk to reach it, realised fee/day
 vs the pool's fee yield (are you capturing more or less than an average LP), and the pool's
 screener health with its radar.
+
+KRYSTAL SETUP block (also `krystal-curator setup`): the values to enter in Krystal's
+Automation form for that position, labelled like the form — rebalancing trigger, time buffer,
+new range ±% (σ·√hold-days for the active profile), swap / pool slippage, gas fee ceiling,
+recurring, compound / harvest minimums, emergency-exit price. The daemon sends the same
+list to Telegram whenever a new position appears. Nothing is signed or written to Krystal.
 
 ROTATE block: the same dollars simulated in the screener's top pools for the active profile
 (`1`–`4` switch it inside the view): my$/d, IL/d, net/d, share, uplift vs the position's
