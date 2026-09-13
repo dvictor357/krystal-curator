@@ -123,6 +123,7 @@ def parse_strategy(s: dict, vault_name: str) -> Position:
         opened_ts=int(time.time() - age) if age else 0,
         amounts=[],
         vault=vault_name,
+        fee_tier=fnum(s.get("feeTierPercentage")) or fnum(pool.get("fee")),
     )
 
 

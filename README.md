@@ -93,6 +93,18 @@ ROTATE block: the same dollars simulated in the screener's top pools for the act
 realised net, and payback of a 0.3 % switch cost. Verdict line says ROTATE / CONSIDER / STAY.
 `x` opens the full ranked list; Enter jumps the screener to that pool.
 
+Vault summary lines add idle capital (TVL not deployed in open positions), net result since
+inception (value + withdrawn − deposited) and a TVL sparkline once history exists (vault
+equity is snapshotted every 5 min into the local db).
+
+`t` opens TRACK RECORD per vault (`tab` cycles vaults): equity / PnL / 24h-earnings
+sparklines, capital deployed vs idle, since-inception result, and closed-position analytics —
+count, win rate, realised PnL split into fees vs price, avg/median, hold time, best and
+worst, breakdowns by protocol, fee tier and pair.
+
+`e` writes an investor-style markdown report to `reports/vaults_<chain>_<time>.md`:
+per vault summary, open positions table, closed track record and per-pair table.
+
 Vaults are refetched on every screener refresh (free API), so monitoring runs without
 opening `P`: the main top bar shows `POS:n OOR:k EDGE:m 24h+$`, and toasts fire when a
 position leaves / re-enters range, an edge comes within 0.5σ, the pool's grade worsens, or

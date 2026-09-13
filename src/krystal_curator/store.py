@@ -23,6 +23,13 @@ CREATE TABLE IF NOT EXISTS snapshots (
     fee7d     REAL, apr24 REAL, volatility REAL, drawdown REAL
 );
 CREATE INDEX IF NOT EXISTS snap_pool_ts ON snapshots (chain_id, address, protocol, ts);
+CREATE TABLE IF NOT EXISTS vault_snapshots (
+    ts        INTEGER NOT NULL,
+    chain_id  INTEGER NOT NULL,
+    address   TEXT    NOT NULL,
+    tvl       REAL, pnl REAL, earning24h REAL, my_value REAL, idle REAL, open_n INTEGER
+);
+CREATE INDEX IF NOT EXISTS vsnap_ts ON vault_snapshots (chain_id, address, ts);
 CREATE TABLE IF NOT EXISTS watchlist (
     chain_id  INTEGER NOT NULL,
     address   TEXT    NOT NULL,
@@ -46,6 +53,17 @@ class Point:
     @property
     def fee_yield(self) -> float:
         return self.fee24 / self.tvl if self.tvl > 0 else 0.0
+
+
+@dataclass(slots=True, frozen=True)
+class VaultPoint:
+    ts: int
+    tvl: float
+    pnl: float
+    earning24h: float
+    my_value: float
+    idle: float
+    open_n: int
 
 
 @dataclass(slots=True, frozen=True)
@@ -146,6 +164,37 @@ class Store:
             fee24_pct=_pct(p.s24h.fee, fee24),
             vol24_pct=_pct(p.s24h.volume, vol24),
         )
+
+    # ---- vault equity -------------------------------------------------
+    def record_vaults(
+        self, rows: list[tuple[int, str, float, float, float, float, float, int]]
+    ) -> None:
+        """rows: (chain_id, address, tvl, pnl, earning24h, my_value, idle, open_n)."""
+        ts = int(time.time())
+        with self._lock:
+            self._db.executemany(
+                "INSERT INTO vault_snapshots VALUES (?,?,?,?,?,?,?,?,?)",
+                [(ts, *r) for r in rows],
+            )
+            self._db.commit()
+
+    def last_vault_ts(self) -> int:
+        with self._lock:
+            row = self._db.execute("SELECT MAX(ts) FROM vault_snapshots").fetchone()
+        return int(row[0] or 0)
+
+    def vault_history(
+        self, chain_id: int, address: str, *, days: float = 30, limit: int = 500
+    ) -> list[VaultPoint]:
+        since = int(time.time() - days * 86400)
+        with self._lock:
+            cur = self._db.execute(
+                "SELECT ts, tvl, pnl, earning24h, my_value, idle, open_n FROM vault_snapshots "
+                "WHERE chain_id=? AND address=? AND ts>=? ORDER BY ts DESC LIMIT ?",
+                (chain_id, address, since, limit),
+            )
+            rows = cur.fetchall()
+        return [VaultPoint(*r) for r in reversed(rows)]
 
     # ---- watchlist ----------------------------------------------------
     def _load_watch(self) -> list[tuple[int, str, str]]:

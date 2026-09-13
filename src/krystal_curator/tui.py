@@ -29,6 +29,7 @@ from textual_image.widget import HalfcellImage, Image, SixelImage, TGPImage, Uni
 
 from . import api
 from .advisor import Advice, advise, price_ladder
+from .analytics import idle_capital, real_roi, report_markdown, track_record
 from .api import KrystalError
 from .enrich import TokenInfo, TokenMeta
 from .models import Pool
@@ -67,6 +68,7 @@ def pick_image_mode(explicit: str | None = None) -> str:
 
 SNAPSHOT_EVERY = 15 * 60  # seconds between full-universe snapshots
 POS_PNL_DROP = 0.05  # alert when a position's PnL falls by this fraction of its value
+VAULT_SNAPSHOT_EVERY = 5 * 60  # seconds between vault equity snapshots
 
 RADAR_LABEL = {
     "yield": "YLD",
@@ -263,6 +265,177 @@ class RotationModal(ModalScreen[str | None]):
         self.dismiss(str(ev.option.id))
 
 
+class TrackScreen(Screen[None]):
+    """Closed-position analytics + equity history per vault."""
+
+    BINDINGS: ClassVar = [
+        Binding("escape", "dismiss(None)", "BACK"),
+        Binding("tab", "next_vault", "NEXT VAULT"),
+    ]
+
+    def __init__(self, app_ref: CuratorApp) -> None:
+        super().__init__()
+        self.curator = app_ref
+        self.idx = 0
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="track_topbar")
+        body = Static("", id="track_body")
+        body.border_title = "TRACK RECORD"
+        yield body
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._draw()
+
+    def action_next_vault(self) -> None:
+        if self.curator.vaults:
+            self.idx = (self.idx + 1) % len(self.curator.vaults)
+            self._draw()
+
+    def _draw(self) -> None:
+        vs = self.curator.vaults
+        if not vs:
+            return
+        v = vs[self.idx]
+        tr = track_record(v.closed)
+        idle, idle_pct = idle_capital(v)
+        gain, roi = real_roi(v)
+        self.query_one("#track_topbar", Static).update(
+            f" TRACK RECORD   {v.name}   ({self.idx + 1}/{len(vs)}, tab = next)   "
+            f"{v.vault_type}  tvl {v.tvl:,.0f}$  apr {v.apr:.1f}%  risk {v.risk}"
+        )
+        t = Table.grid(padding=(0, 1), expand=True)
+        t.add_column(style="#ffb000", no_wrap=True)
+        t.add_column(style="white")
+
+        # ---- equity
+        hist = self.curator.store.vault_history(v.chain_id, v.address, days=30)
+        eq = Text()
+        if len(hist) >= 2:
+            span = (hist[-1].ts - hist[0].ts) / 3600
+            eq.append(f"{len(hist)} samples / {span:.0f}h   ", style="dim")
+            eq.append("tvl ", style="#ffb000")
+            eq.append(sparkline([h.tvl for h in hist], 30), style="#ffb000")
+            eq.append(f"  {hist[0].tvl:,.0f} → {hist[-1].tvl:,.0f}$\n")
+            eq.append(" " * 25 + "pnl ", style="cyan")
+            eq.append(sparkline([h.pnl for h in hist], 30), style="cyan")
+            eq.append(f"  {hist[0].pnl:+,.0f} → {hist[-1].pnl:+,.0f}$\n")
+            eq.append(" " * 24 + "24h$ ", style="green")
+            eq.append(sparkline([h.earning24h for h in hist], 30), style="green")
+            eq.append(f"  {hist[-1].earning24h:+,.0f}$/d now")
+        else:
+            eq.append("building — needs ≥2 refreshes 5 min apart", style="dim")
+        t.add_row("EQUITY", eq)
+        t.add_row(
+            "CAPITAL",
+            Text.assemble(
+                (f"tvl {v.tvl:,.0f}$   deployed {v.tvl - idle:,.0f}$   ", ""),
+                (
+                    f"idle {idle:,.0f}$ ({idle_pct * 100:.1f}%)",
+                    "red" if idle_pct >= 0.3 else "yellow" if idle_pct >= 0.1 else "green",
+                ),
+                ("   ← capital not earning" if idle_pct >= 0.1 else "", "dim"),
+            ),
+        )
+        t.add_row(
+            "SINCE START",
+            Text.assemble(
+                (
+                    f"deposited {v.my_deposit:,.0f}$   withdrawn {v.my_withdrawn:,.0f}$   value {v.my_value:,.0f}$   ",
+                    "",
+                ),
+                (
+                    f"net {gain:+,.0f}$" + (f" ({roi * 100:+.1f}%)" if roi is not None else ""),
+                    "bold green" if gain >= 0 else "bold red",
+                ),
+                (f"   lifetime fees {v.fee_generated:,.0f}$   30d {v.earning_30d:+,.0f}$", "dim"),
+            ),
+        )
+        t.add_row("", "")
+
+        # ---- closed stats
+        if tr.n == 0:
+            t.add_row("CLOSED", Text("no closed positions yet", style="dim"))
+        else:
+            st = Table.grid(padding=(0, 2))
+            st.add_column(style="#ffb000", no_wrap=True)
+            st.add_column(style="white")
+            st.add_row(
+                "count",
+                Text.assemble(
+                    (f"{tr.n} closed   win rate ", ""),
+                    (
+                        f"{tr.win_rate * 100:.0f}%",
+                        "bold green" if tr.win_rate >= 0.5 else "bold red",
+                    ),
+                    (
+                        f"   avg hold {tr.avg_hold_days:.1f}d   avg deposit {tr.avg_deposit:,.0f}$",
+                        "",
+                    ),
+                ),
+            )
+            st.add_row(
+                "realised",
+                Text.assemble(
+                    (f"{tr.pnl:+,.0f}$ total", "bold green" if tr.pnl >= 0 else "bold red"),
+                    (f"   = fees {tr.fees:+,.0f}$ + price {tr.price_pnl:+,.0f}$   ", ""),
+                    (
+                        f"avg {tr.avg_pnl:+,.0f}$  median {tr.median_pnl:+,.0f}$  {tr.pnl_per_day:+,.1f}$/position-day",
+                        "dim",
+                    ),
+                ),
+            )
+            if tr.best and tr.worst:
+                st.add_row(
+                    "best / worst",
+                    Text.assemble(
+                        (f"{tr.best.pair} {tr.best.pnl:+,.0f}$ ({tr.best.age_days:.1f}d)", "green"),
+                        ("   ", ""),
+                        (
+                            f"{tr.worst.pair} {tr.worst.pnl:+,.0f}$ ({tr.worst.age_days:.1f}d)",
+                            "red",
+                        ),
+                    ),
+                )
+            t.add_row("CLOSED", st)
+            t.add_row("", "")
+
+            def bucket_table(title: str, buckets) -> Table:
+                b = Table(box=None, pad_edge=False, header_style="bold #ffb000")
+                b.add_column(title)
+                b.add_column("N", justify="right")
+                b.add_column("WIN", justify="right")
+                b.add_column("PNL", justify="right")
+                b.add_column("FEES", justify="right")
+                b.add_column("PRICE", justify="right")
+                b.add_column("AVG", justify="right")
+                b.add_column("HOLD", justify="right")
+                for x in buckets:
+                    b.add_row(
+                        Text(x.key, style="white"),
+                        str(x.n),
+                        _color_num(f"{x.win_rate * 100:.0f}%", x.win_rate, 0.6, 0.4),
+                        _color_num(f"{x.pnl:+,.0f}", x.pnl, 0.0, -1e-9),
+                        f"{x.fees:,.0f}",
+                        _color_num(f"{x.pnl - x.fees:+,.0f}", x.pnl - x.fees, 0.0, -1e-9),
+                        f"{x.avg_pnl:+,.0f}",
+                        f"{x.avg_hold_days:.1f}d",
+                    )
+                return b
+
+            side = Table.grid(padding=(0, 4))
+            side.add_column()
+            side.add_column()
+            side.add_row(
+                bucket_table("BY PROTOCOL", tr.by_protocol), bucket_table("BY FEE TIER", tr.by_tier)
+            )
+            t.add_row("BREAKDOWN", side)
+            t.add_row("", "")
+            t.add_row("BY PAIR", bucket_table("PAIR", tr.by_pair[:25]))
+        self.query_one("#track_body", Static).update(t)
+
+
 POS_COLUMNS = (
     "VAULT",
     "PAIR",
@@ -292,6 +465,8 @@ class PositionsScreen(Screen[str | None]):
         Binding("r", "refresh", "REFRESH"),
         Binding("c", "toggle_closed", "CLOSED"),
         Binding("x", "rotate", "ROTATE?"),
+        Binding("t", "track", "TRACK"),
+        Binding("e", "report", "REPORT"),
         Binding("1", "profile('conservative')", "CONS", show=False),
         Binding("2", "profile('balanced')", "BAL", show=False),
         Binding("3", "profile('aggressive')", "AGG", show=False),
@@ -400,10 +575,26 @@ class PositionsScreen(Screen[str | None]):
             t.append(f"tvl {v.tvl:,.0f}$  ")
             t.append(f"pnl {v.pnl:+,.0f}$  ", style="green" if v.pnl >= 0 else "red")
             t.append(f"apr {v.apr:.1f}%  24h {v.earning_24h:+,.0f}$  30d {v.earning_30d:+,.0f}$  ")
+            idle, idle_pct = idle_capital(v)
+            t.append(
+                f"idle {idle:,.0f}$ ({idle_pct * 100:.0f}%)  ",
+                style="red" if idle_pct >= 0.3 else "yellow" if idle_pct >= 0.1 else "dim",
+            )
+            gain, roi = real_roi(v)
+            t.append(
+                f"since inception {gain:+,.0f}$"
+                + (f" ({roi * 100:+.1f}%)  " if roi is not None else "  "),
+                style="green" if gain >= 0 else "red",
+            )
             t.append(
                 f"closed {len(v.closed)} (win {wr}, pnl {v.closed_pnl:+,.0f}$)  ",
                 style="dim",
             )
+            hist = self.curator.store.vault_history(v.chain_id, v.address, days=30)
+            if len(hist) >= 2:
+                t.append("tvl ", style="dim")
+                t.append(sparkline([h.tvl for h in hist], 16), style="#ffb000")
+                t.append("  ", style="dim")
             t.append(f"risk {v.risk}  age {v.age_days:.0f}d\n", style="dim")
         self.query_one("#pos_vaults", Static).update(t)
 
@@ -657,6 +848,27 @@ class PositionsScreen(Screen[str | None]):
         if p:
             self._render_detail(p)
 
+    def action_track(self) -> None:
+        if not self.curator.vaults:
+            return
+        self.app.push_screen(TrackScreen(self.curator))
+
+    def action_report(self) -> None:
+        if not self.curator.vaults:
+            return
+        equity = {
+            v.address: [h.tvl for h in self.curator.store.vault_history(v.chain_id, v.address)]
+            for v in self.curator.vaults
+        }
+        chain = next((v.chain for v in self.curator.pools[:1]), str(self.curator.chain_id))
+        md = report_markdown(self.curator.vaults, chain=chain, equity=equity)
+        out = Path("reports")
+        out.mkdir(exist_ok=True)
+        path = out / f"vaults_{self.curator.chain_id}_{datetime.now(UTC):%Y%m%d_%H%M}.md"
+        path.write_text(md, encoding="utf-8")
+        self.query_one("#pos_status", Static).update(f"report saved {path}")
+        self.app.notify(f"saved {path}", title="REPORT")
+
     def action_rotate(self) -> None:
         p = self._selected()
         if p is None or p.status == "CLOSED":
@@ -820,7 +1032,29 @@ class CuratorApp(App[None]):
         if vaults is not None:
             self.vaults = vaults
             self._check_positions()
+            self._snapshot_vaults()
         self._rebuild()
+
+    def _snapshot_vaults(self) -> None:
+        if time.time() - self.store.last_vault_ts() < VAULT_SNAPSHOT_EVERY:
+            return
+        rows = []
+        for v in self.vaults:
+            idle, _ = idle_capital(v)
+            rows.append(
+                (
+                    v.chain_id,
+                    v.address,
+                    v.tvl,
+                    v.pnl,
+                    v.earning_24h,
+                    v.my_value,
+                    idle,
+                    len(v.positions),
+                )
+            )
+        if rows:
+            self.store.record_vaults(rows)
 
     # ---- position monitoring (runs on every refresh, free API) ------------
     def open_positions(self) -> list[Position]:
