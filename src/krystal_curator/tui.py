@@ -28,12 +28,14 @@ from textual.widgets.option_list import Option
 from textual_image.widget import HalfcellImage, Image, SixelImage, TGPImage, UnicodeImage
 
 from . import api
+from .api import KrystalError
 from .enrich import TokenInfo, TokenMeta
 from .models import Pool
 from .position import simulate
+from .positions import POSITIONS_UNITS, Position, fetch_positions
 from .profiles import PROFILES, RiskProfile
 from .radar import render_radar
-from .scoring import Scored, curate
+from .scoring import Scored, curate, score_pool
 from .store import Delta, Store, sparkline
 
 # textual-image renders palette PNGs fine; PIL just complains about the conversion.
@@ -201,6 +203,167 @@ class LinksModal(ModalScreen[str | None]):
         self.dismiss(str(ev.option.id))
 
 
+POS_COLUMNS = (
+    "PAIR",
+    "PROTO",
+    "STATUS",
+    "RANGE",
+    "VALUE",
+    "DEPOSIT",
+    "PNL",
+    "ROI%",
+    "IL",
+    "FEE PEND",
+    "FEE CLMD",
+    "FEE APR",
+    "AGE",
+    "POOL GRADE",
+    "POOL Y24%",
+    "POOL σ%",
+)
+
+
+class PositionsScreen(Screen[str | None]):
+    """Your open positions (Cloud API). Enter jumps the screener to that pool."""
+
+    BINDINGS: ClassVar = [
+        Binding("escape", "dismiss(None)", "BACK"),
+        Binding("r", "refresh", "REFRESH (10u)"),
+        Binding("o", "open_url", "OPEN"),
+        Binding("enter", "jump", "SCREEN POOL", show=True),
+    ]
+
+    def __init__(self, app_ref: CuratorApp) -> None:
+        super().__init__()
+        self.curator = app_ref
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="pos_topbar")
+        table = DataTable(id="pos_table", cursor_type="row")
+        table.border_title = "MY POSITIONS"
+        yield table
+        yield Static("", id="pos_status")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        table = self.query_one("#pos_table", DataTable)
+        table.add_columns(*POS_COLUMNS)
+        table.fixed_columns = 1
+        self._topbar()
+        if self.curator.positions:
+            self._fill(self.curator.positions)
+        else:
+            self.action_refresh()
+
+    def _topbar(self) -> None:
+        w = self.curator.wallet or ""
+        total = sum(p.value for p in self.curator.positions)
+        pnl = sum(p.pnl for p in self.curator.positions)
+        pend = sum(p.fee_pending for p in self.curator.positions)
+        out = sum(1 for p in self.curator.positions if not p.in_range)
+        self.query_one("#pos_topbar", Static).update(
+            f" MY POSITIONS   {w[:6]}…{w[-4:]}   ROBINHOOD({self.curator.chain_id})   "
+            f"{len(self.curator.positions)} open, {out} out of range   "
+            f"VALUE ${total:,.0f}   PNL {pnl:+,.0f}$   PENDING FEES {pend:,.0f}$   "
+            f"CLOUD:{self.curator.units_used}u"
+        )
+
+    def action_refresh(self) -> None:
+        self.query_one("#pos_status", Static).update("fetching positions …")
+        self._fetch()
+
+    @work(thread=True, exclusive=True, group="positions")
+    def _fetch(self) -> None:
+        try:
+            rows = fetch_positions(
+                self.curator.cloud_key or "",
+                self.curator.wallet or "",
+                chain_ids=[self.curator.chain_id],
+            )
+        except KrystalError as e:
+            self.app.call_from_thread(self._error, str(e))
+            return
+        self.app.call_from_thread(self._loaded, rows)
+
+    def _error(self, msg: str) -> None:
+        self.query_one("#pos_status", Static).update(Text(f"ERROR {msg}", style="bold red"))
+
+    def _loaded(self, rows: list[Position]) -> None:
+        self.curator.units_used += POSITIONS_UNITS
+        self.curator.positions = rows
+        for p in rows:
+            if not p.in_range:
+                self.app.notify(
+                    f"{p.pair} OUT OF RANGE ({p.value:,.0f}$)",
+                    title="POSITION",
+                    severity="warning",
+                    timeout=15,
+                )
+        self._fill(rows)
+
+    def _fill(self, rows: list[Position]) -> None:
+        table = self.query_one("#pos_table", DataTable)
+        table.clear()
+        self._order = sorted(rows, key=lambda x: x.value, reverse=True)
+        for n, p in enumerate(self._order):
+            sc = self.curator.pool_for(p.pool_address)
+            pool = sc.pool if sc else None
+            rp = p.range_pos
+            if rp is None:
+                rng = Text("?", style="dim")
+            else:
+                bar = ["─"] * 10
+                i = max(0, min(9, int(rp * 10)))
+                bar[i] = "●"
+                rng = Text("".join(bar), style="green" if 0 <= rp <= 1 else "red")
+            table.add_row(
+                Text(p.pair, style="bold white"),
+                Text(p.protocol, style="cyan"),
+                Text(
+                    "IN" if p.in_range else p.status,
+                    style="bold green" if p.in_range else "bold red",
+                ),
+                rng,
+                Text(f"{p.value:,.0f}", justify="right", style="bold"),
+                Text(f"{p.deposit:,.0f}", justify="right"),
+                _color_num(f"{p.pnl:+,.0f}", p.pnl, 0.0, -1e-9),
+                _color_num(f"{p.roi_pct:+.1f}", p.roi_pct, 0.0, -1e-9),
+                Text(f"{p.il:,.0f}", justify="right"),
+                Text(f"{p.fee_pending:,.0f}", justify="right", style="bold yellow"),
+                Text(f"{p.fee_claimed:,.0f}", justify="right"),
+                Text(f"{p.fee_apr:,.0f}%", justify="right"),
+                Text(f"{p.age_days:.1f}d", justify="right"),
+                _grade_text(sc.grade) if sc else Text("-", style="dim"),
+                Text(f"{pool.fee_yield_24h * 100:.2f}" if pool else "-", justify="right"),
+                Text(f"{pool.volatility:.1f}" if pool else "-", justify="right"),
+                key=f"{n}:{p.id}",
+            )
+        self._topbar()
+        self.query_one("#pos_status", Static).update(
+            f"{len(rows)} positions   r refresh ({POSITIONS_UNITS} units)   enter = screen this pool   esc back"
+        )
+
+    def _selected(self) -> Position | None:
+        table = self.query_one("#pos_table", DataTable)
+        i = table.cursor_row
+        order = getattr(self, "_order", [])
+        return order[i] if 0 <= i < len(order) else None
+
+    def action_open_url(self) -> None:
+        p = self._selected()
+        if p:
+            sc = self.curator.pool_for(p.pool_address)
+            webbrowser.open(sc.pool.url if sc else "https://defi.krystal.app/account")
+
+    def action_jump(self) -> None:
+        p = self._selected()
+        if p:
+            self.dismiss(p.pool_address)
+
+    def on_data_table_row_selected(self, _: DataTable.RowSelected) -> None:
+        self.action_jump()
+
+
 class CuratorApp(App[None]):
     TITLE = "KRYSTAL CURATOR"
     CSS_PATH = "tui.tcss"
@@ -217,6 +380,7 @@ class CuratorApp(App[None]):
         Binding("a", "toggle_auto", "AUTO"),
         Binding("asterisk", "toggle_watch", "WATCH", key_display="*"),
         Binding("W", "watch_only", "★ONLY"),
+        Binding("P", "positions", "MY POS"),
         Binding("o", "open_url", "OPEN"),
         Binding("l", "links", "LINKS"),
         Binding("e", "export_csv", "CSV"),
@@ -236,8 +400,12 @@ class CuratorApp(App[None]):
         image_mode: str | None = None,
         size: float = 50_000,
         refresh_seconds: int = 300,
+        wallet: str | None = None,
     ) -> None:
         super().__init__()
+        self.wallet = wallet or api.wallet()
+        self.units_used = 0  # Cloud API units spent this session
+        self.positions: list[Position] = []
         self.position_size = size
         self.refresh_seconds = refresh_seconds if refresh_seconds > 0 else 300
         self.auto = refresh_seconds > 0
@@ -491,12 +659,13 @@ class CuratorApp(App[None]):
             table.move_cursor(row=idx)
             self._render_detail(self.rows[idx])
         else:
-            self.main.query_one("#detail", Static).update(
+            self.main.query_one("#detail_body", Static).update(
                 Text(
                     "no pool passes this profile — try 3/4 or press u to widen quote",
                     style="red",
                 )
             )
+            self.main.query_one("#hero_text", Static).update("")
 
     # ---- rendering ------------------------------------------------------
     def _render_topbar(self) -> None:
@@ -504,7 +673,7 @@ class CuratorApp(App[None]):
         chain = next((p.chain for p in self.pools[:1]), str(self.chain_id)).upper()
         proto = (self.protocol_filter or "ALL").upper()
         quote = self.quote or "ANY"
-        cloud = "  CLOUD:ON" if self.cloud_key else ""
+        cloud = f"  CLOUD:{self.units_used}u" if self.cloud_key else ""
         img = f"  IMG:{self.image_mode.upper()}"
         size = f"   SIZE:${_usd(self.position_size)}"
         every = (
@@ -870,6 +1039,39 @@ class CuratorApp(App[None]):
         col = str(ev.column_key.value)
         if col in SORTABLE:
             self._set_sort(col)
+
+    def action_positions(self) -> None:
+        if not self.cloud_key:
+            self._set_status(f"set {api.CLOUD_KEY_ENV} (env or .env) to use the positions view")
+            return
+        if not self.wallet:
+            self._set_status(f"set --wallet or {api.WALLET_ENV} to use the positions view")
+            return
+        self.push_screen(PositionsScreen(self), self._on_positions_closed)
+
+    def _on_positions_closed(self, pool_key: str | None) -> None:
+        """Jump the screener to the pool the user picked in the positions view."""
+        if not pool_key:
+            return
+        addr = pool_key
+        self.find_text = addr
+        box = self.main.query_one("#find", Input)
+        box.value = addr
+        box.add_class("visible")
+        self._rebuild()
+        if not self.rows:
+            self.call_after_refresh(
+                self._set_status, f"pool {addr[:10]}… not in this profile — try 4 (degen) or u"
+            )
+
+    def pool_for(self, address: str, protocol: str = "") -> Scored | None:
+        """Screener view of a pool by address (any profile filter ignored)."""
+        for p in self.pools:
+            if p.address == address and (not protocol or p.protocol == protocol):
+                sc = score_pool(p, self.profile)
+                sc.sim = simulate(p, self.position_size)
+                return sc
+        return None
 
     def action_toggle_auto(self) -> None:
         self.auto = not self.auto

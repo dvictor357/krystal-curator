@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import api
+from .env import load_dotenv
 from .models import ROBINHOOD
 from .position import simulate
 from .profiles import PROFILE_ORDER, PROFILES
@@ -37,6 +38,11 @@ def _common(ap: argparse.ArgumentParser) -> None:
     )
     ap.add_argument(
         "--size", type=float, default=50_000, help="your position size in USD (default 50000)"
+    )
+    ap.add_argument(
+        "--wallet",
+        default=None,
+        help=f"wallet for the positions view (or ${api.WALLET_ENV} / .env); needs ${api.CLOUD_KEY_ENV}",
     )
 
 
@@ -183,11 +189,13 @@ def run_tui(args: argparse.Namespace) -> int:
         image_mode=args.images,
         size=args.size,
         refresh_seconds=args.refresh,
+        wallet=args.wallet,
     ).run()
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv()
     ap = build_parser()
     args = ap.parse_args(argv)
     if args.cmd == "scan":

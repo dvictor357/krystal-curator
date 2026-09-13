@@ -140,3 +140,27 @@ LinksModal {
     color: #ffb000;
     padding-left: 1;
 }
+
+PositionsScreen {
+    background: #000000;
+}
+#pos_topbar {
+    height: 1;
+    background: #ff9a00;
+    color: #000000;
+    text-style: bold;
+    padding: 0 1;
+}
+#pos_table {
+    height: 1fr;
+    border: solid #a05e00;
+    border-title-color: #ffb000;
+    border-title-style: bold;
+    background: #000000;
+}
+#pos_status {
+    height: 1;
+    background: #101010;
+    color: #ffb000;
+    padding: 0 1;
+}

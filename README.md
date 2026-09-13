@@ -72,11 +72,24 @@ Weighted per profile:
 `RK` (A–E) is a profile-independent risk grade. Flags: `NEW` (<1d history), `SPIKE`,
 `FADING`, `QUIET-1H`, `DYN-FEE`, `INCENTIVE`, `NO-AUTO`, `BLUE-CHIP`.
 
-## Optional: Cloud API
+## Cloud API: your positions (`P`)
 
-`export KRYSTAL_CLOUD_KEY=...` (from https://cloud.krystal.app) and `scan --tx` fetches
-24h transaction counts for the top rows. Costs credits per pool; response parsing is
-best-effort as the schema is undocumented.
+Needs a key from https://cloud.krystal.app and your wallet. Put both in `.env` (gitignored)
+or the environment:
+
+```
+KRYSTAL_CLOUD_KEY=kc_...
+KRYSTAL_WALLET=0x...
+```
+
+`P` opens MY POSITIONS: value, deposit, PnL, ROI, IL, pending/claimed fees, fee APR, age,
+range position (● on a bar between min and max price) and, joined from the screener, the
+pool's current grade / fee yield / volatility so you can see when a pool you're in has
+decayed. `r` refetches (10 units per call — free tier is 50,000; nothing runs on the
+auto-refresh timer). `Enter` jumps the screener to that pool. Out-of-range positions raise
+a toast. The top bar counts units spent this session.
+
+`scan --tx` (same key) fetches 24h transaction counts for the top rows, 10 units per pool.
 
 ## Dev
 

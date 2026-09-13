@@ -17,6 +17,7 @@ from .models import Pool
 PUBLIC_TOP_POOLS = "https://api.krystal.app/all/v2/lp_explorer/top_pools"
 CLOUD_BASE = "https://cloud-api.krystal.app/v1"
 CLOUD_KEY_ENV = "KRYSTAL_CLOUD_KEY"
+WALLET_ENV = "KRYSTAL_WALLET"
 
 _HEADERS = {"Accept": "application/json", "User-Agent": "krystal-curator/0.1"}
 
@@ -48,6 +49,10 @@ def fetch_pools(chain_id: int, *, limit: int = 5000, timeout: float = 30.0) -> l
 
 def cloud_key() -> str | None:
     return os.environ.get(CLOUD_KEY_ENV) or None
+
+
+def wallet() -> str | None:
+    return os.environ.get(WALLET_ENV) or None
 
 
 def fetch_tx_count_24h(pool: Pool, key: str, *, timeout: float = 30.0) -> int | None:
