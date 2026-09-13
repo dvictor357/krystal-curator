@@ -92,7 +92,109 @@ def build_parser() -> argparse.ArgumentParser:
         help="UTC hour to write (and send) the daily vault report, e.g. 0",
     )
     watch.add_argument("--once", action="store_true", help="one tick then exit (cron mode)")
+
+    bt = sub.add_parser(
+        "backtest", help="does the score predict forward fee yield? (local history)"
+    )
+    _common(bt)
+    bt.add_argument(
+        "--horizon", type=float, default=24, help="hours ahead to evaluate (default 24)"
+    )
+    bt.add_argument("--days", type=float, default=14, help="history window in days (default 14)")
     return ap
+
+
+def run_backtest(args: argparse.Namespace) -> int:
+    from .backtest import evaluate, il_check
+    from .profiles import PROFILE_ORDER
+    from .store import Store
+
+    con = Console(width=None if sys.stdout.isatty() else 140)
+    store = Store()
+    rows = [r for r in store.all_snapshots(args.days) if r[1] == args.chain]
+    times = len({r[0] for r in rows})
+    con.print(
+        f"[bold #ffb000]local history[/]: {len(rows):,} pool snapshots over {times} refresh times"
+    )
+    if times < 2:
+        con.print(
+            "[yellow]need snapshots ≥ horizon apart — run the TUI or `watch` for a day first[/yellow]"
+        )
+        return 1
+    t = Table(header_style="bold #ffb000", box=box.SIMPLE_HEAD, pad_edge=False)
+    for c in (
+        "PROFILE",
+        "PAIRS",
+        "TIMES",
+        "SPEARMAN",
+        "TOP DECILE %/d",
+        "BOTTOM %/d",
+        "STEADY",
+        "FADING",
+        "SPIKE",
+    ):
+        t.add_column(c, justify="right" if c != "PROFILE" else "left")
+    comps: dict[str, dict[str, float]] = {}
+    for key in PROFILE_ORDER:
+        r = evaluate(rows, PROFILES[key], horizon_h=args.horizon)
+        comps[key] = r.component_spearman
+        pct = lambda v: "-" if v is None else f"{v * 100:.3f}"
+        t.add_row(
+            key,
+            str(r.pairs),
+            str(r.times),
+            "-" if r.spearman is None else f"{r.spearman:+.2f}",
+            pct(r.decile_yield[0] if r.decile_yield else None),
+            pct(r.decile_yield[-1] if r.decile_yield else None),
+            pct(r.steady_next_yield),
+            pct(r.fading_next_yield),
+            pct(r.spike_next_yield),
+        )
+    con.print(t)
+    con.print(
+        "[dim]spearman: rank correlation between score at T and fee yield at T+horizon; "
+        "+1 perfect, 0 none. Top vs bottom decile is the practical gap.[/dim]"
+    )
+    c = Table(
+        title="component → forward yield (spearman)",
+        header_style="bold #ffb000",
+        box=box.SIMPLE_HEAD,
+        pad_edge=False,
+    )
+    c.add_column("PROFILE")
+    names = ["yield", "turnover", "consistency", "liveness", "depth", "risk"]
+    for n in names:
+        c.add_column(n, justify="right")
+    for key, cs in comps.items():
+        c.add_row(key, *[f"{cs.get(n, 0.0):+.2f}" if cs else "-" for n in names])
+    con.print(c)
+
+    wallet = args.wallet or api.wallet()
+    if wallet:
+        from .vaults import fetch_vaults
+
+        try:
+            vaults = fetch_vaults(wallet, chain_id=args.chain)
+            pools = api.fetch_pools(args.chain)
+        except api.KrystalError as e:
+            con.print(f"[red]{e}[/red]")
+            return 0
+        sig = {p.address: p.volatility for p in pools}
+        closed = [p for v in vaults for p in v.closed]
+        chk = il_check(closed, sig)
+        con.print(
+            f"\n[bold #ffb000]IL model vs your closed trades[/] ({chk.n} with a known pool σ)"
+        )
+        if chk.n:
+            con.print(
+                f"  predicted IL (σ²/8·days·deposit): [red]-{chk.predicted_il:,.1f}$[/red]   "
+                f"realised price PnL: {chk.realised_price_pnl:+,.1f}$   fees: +{chk.fees:,.1f}$"
+            )
+            con.print(
+                "  [dim]price PnL more negative than predicted ⇒ model under-estimates IL for your "
+                "ranges (concentrated); less negative ⇒ conservative.[/dim]"
+            )
+    return 0
 
 
 def run_scan(args: argparse.Namespace) -> int:
@@ -217,6 +319,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.cmd == "scan":
         return run_scan(args)
+    if args.cmd == "backtest":
+        return run_backtest(args)
     if args.cmd == "watch":
         from .daemon import run_watch
 

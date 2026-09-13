@@ -119,6 +119,18 @@ class Store:
             self._db.commit()
         return len(rows)
 
+    def all_snapshots(self, days: float = 14) -> list[tuple]:
+        """(ts, chain_id, address, protocol, tvl, vol24, fee24, vol1h, fee1h, fee7d, apr24,
+        volatility, drawdown) for every snapshot in the window, oldest first."""
+        since = int(time.time() - days * 86400)
+        with self._lock:
+            cur = self._db.execute(
+                "SELECT ts, chain_id, address, protocol, tvl, vol24, fee24, vol1h, fee1h, fee7d, "
+                "apr24, volatility, drawdown FROM snapshots WHERE ts >= ? ORDER BY ts",
+                (since,),
+            )
+            return cur.fetchall()
+
     def prune(self, keep_days: int = 30) -> None:
         cutoff = int(time.time()) - keep_days * 86400
         with self._lock:

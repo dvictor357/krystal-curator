@@ -73,6 +73,19 @@ Run it under launchd on macOS (keeps running across logins):
 `launchctl load ~/Library/LaunchAgents/app.krystal-curator.watch.plist`. The TUI and the
 daemon share the same local db, so history built by one shows in the other.
 
+## Backtest (`backtest`)
+
+```sh
+uv run krystal-curator backtest --horizon 24 --days 14
+```
+
+Uses only the local snapshot history. For every refresh time T with a snapshot ~horizon
+later, scores each pool as it looked at T and compares with the fee yield it delivered at
+T+horizon: Spearman rank correlation per profile, top vs bottom decile forward yield, mean
+forward yield of STEADY / FADING / SPIKE pools, and per-component correlations (which axes
+actually predict). With a wallet it also compares the σ²/8 IL model against the realised
+price PnL of your closed vault trades. Needs a day or two of TUI / `watch` history first.
+
 ## Position simulator
 
 `--size 50000` (or `$` in the TUI) sets your position size. Every row then shows what *you*
@@ -191,6 +204,19 @@ Run it under launchd on macOS (keeps running across logins):
 
 `launchctl load ~/Library/LaunchAgents/app.krystal-curator.watch.plist`. The TUI and the
 daemon share the same local db, so history built by one shows in the other.
+
+## Backtest (`backtest`)
+
+```sh
+uv run krystal-curator backtest --horizon 24 --days 14
+```
+
+Uses only the local snapshot history. For every refresh time T with a snapshot ~horizon
+later, scores each pool as it looked at T and compares with the fee yield it delivered at
+T+horizon: Spearman rank correlation per profile, top vs bottom decile forward yield, mean
+forward yield of STEADY / FADING / SPIKE pools, and per-component correlations (which axes
+actually predict). With a wallet it also compares the σ²/8 IL model against the realised
+price PnL of your closed vault trades. Needs a day or two of TUI / `watch` history first.
 
 ## Position simulator
 
