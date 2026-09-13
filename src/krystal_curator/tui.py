@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import os
 import warnings
 import webbrowser
 from collections.abc import Callable
@@ -16,8 +17,12 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import DataTable, Footer, Input, Static
-from textual_image.widget import Image
+from textual.css.query import NoMatches
+from textual.screen import ModalScreen, Screen
+from textual.widget import Widget
+from textual.widgets import DataTable, Footer, Input, OptionList, Static
+from textual.widgets.option_list import Option
+from textual_image.widget import HalfcellImage, Image, SixelImage, TGPImage, UnicodeImage
 
 from . import api
 from .enrich import TokenInfo, TokenMeta
@@ -27,6 +32,27 @@ from .scoring import Scored, curate
 
 # textual-image renders palette PNGs fine; PIL just complains about the conversion.
 warnings.filterwarnings("ignore", message="Palette images with Transparency", module="PIL")
+
+IMAGE_MODES: dict[str, type[Widget] | None] = {
+    "auto": Image,
+    "tgp": TGPImage,
+    "sixel": SixelImage,
+    "halfcell": HalfcellImage,
+    "unicode": UnicodeImage,
+    "off": None,
+}
+
+
+def pick_image_mode(explicit: str | None = None) -> str:
+    """CLI flag > KRYSTAL_IMAGE env > terminal heuristics."""
+    mode = explicit or os.environ.get("KRYSTAL_IMAGE") or ""
+    if mode in IMAGE_MODES:
+        return mode
+    # Warp prints graphics escapes as garbage; it does render coloured half blocks.
+    if os.environ.get("TERM_PROGRAM") == "WarpTerminal":
+        return "halfcell"
+    return "auto"
+
 
 COLUMNS = (
     "#",
@@ -47,6 +73,7 @@ COLUMNS = (
     "APR7D",
     "SCORE",
     "RK",
+    "LINKS",
     "FLAGS",
 )
 
@@ -102,10 +129,43 @@ SORTABLE: dict[str, Callable[[Scored], float | str]] = {
     "APR7D": lambda s: s.pool.s7d.apr,
     "SCORE": lambda s: s.score,
     "RK": lambda s: s.grade,
+    "LINKS": lambda s: s.n_links,
 }
 SORT_ORDER = [c for c in COLUMNS if c in SORTABLE]
 # text columns and risk columns read naturally ascending
 ASC_DEFAULT = {"PAIR", "PROTO", "σ%", "RK"}
+
+
+class LinksModal(ModalScreen[str | None]):
+    """Popup listing the pool page and every social link; Enter/click opens, Esc closes."""
+
+    BINDINGS: ClassVar = [Binding("escape", "dismiss(None)", "CLOSE")]
+
+    def __init__(self, pool: Pool, links: list[tuple[str, str, str]]) -> None:
+        super().__init__()
+        self.pool = pool
+        self.links = links
+
+    def compose(self) -> ComposeResult:
+        opts = [
+            Option(Text.assemble(("KRYSTAL ", "bold #ffb000"), self.pool.url), id=self.pool.url)
+        ]
+        for sym, label, url in self.links:
+            opts.append(
+                Option(
+                    Text.assemble(
+                        (f"{sym:<10}", "bold white"), (f"{label:<7}", "bold #ffb000"), url
+                    ),
+                    id=url,
+                )
+            )
+        with Vertical(id="links_box") as box:
+            box.border_title = f"LINKS  {self.pool.pair}"
+            yield OptionList(*opts, id="links_list")
+            yield Static("enter/click open   esc close", id="links_help")
+
+    def on_option_list_option_selected(self, ev: OptionList.OptionSelected) -> None:
+        self.dismiss(str(ev.option.id))
 
 
 class CuratorApp(App[None]):
@@ -122,10 +182,7 @@ class CuratorApp(App[None]):
         Binding("S", "reverse_sort", "ASC/DESC"),
         Binding("r", "refresh", "REFRESH"),
         Binding("o", "open_url", "OPEN"),
-        Binding("w", "open_link('WEB')", "WEB"),
-        Binding("x", "open_link('X')", "X"),
-        Binding("t", "open_link('TG')", "TG"),
-        Binding("d", "open_link('DC')", "DC"),
+        Binding("l", "links", "LINKS"),
         Binding("e", "export_csv", "CSV"),
         Binding("slash", "find", "FIND", key_display="/"),
         Binding("escape", "clear_find", "", show=False),
@@ -139,8 +196,11 @@ class CuratorApp(App[None]):
         profile: str = "balanced",
         quote: str | None = "USDG",
         protocols: set[str] | None = None,
+        image_mode: str | None = None,
     ) -> None:
         super().__init__()
+        self.image_mode = pick_image_mode(image_mode)
+        self.image_cls = IMAGE_MODES[self.image_mode]
         self.chain_id = chain_id
         self.profile: RiskProfile = PROFILES[profile]
         self.quote: str | None = quote
@@ -156,6 +216,7 @@ class CuratorApp(App[None]):
         self.cloud_key = api.cloud_key()
         self.meta = TokenMeta()
         self.infos: dict[str, TokenInfo] = {}  # for the selected pool, by address
+        self.infos_all: dict[str, TokenInfo] = {}  # every token seen in the table, by address
 
     # ---- layout ---------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -168,16 +229,22 @@ class CuratorApp(App[None]):
                 with Vertical(id="detail") as detail:
                     detail.border_title = "POOL DETAIL"
                     with Horizontal(id="hero"):
-                        yield Image(None, id="logo0")
-                        yield Image(None, id="logo1")
+                        if self.image_cls is not None:
+                            yield self.image_cls(None, id="logo0")
+                            yield self.image_cls(None, id="logo1")
                         yield Static("", id="hero_text")
                     yield Static("", id="detail_body")
             yield Input(placeholder="find pair / token …", id="find")
             yield Static("", id="status")
         yield Footer()
 
+    @property
+    def main(self) -> Screen:
+        """The base screen; widgets live here even while a modal is on top."""
+        return self.screen_stack[0]
+
     def on_mount(self) -> None:
-        table = self.query_one("#table", DataTable)
+        table = self.main.query_one("#table", DataTable)
         table.fixed_columns = 2
         self._render_topbar()
         self._set_status("loading …")
@@ -206,8 +273,48 @@ class CuratorApp(App[None]):
         if self.find_text:
             ft = self.find_text.upper()
             rows = [r for r in rows if ft in r.pool.pair.upper() or ft in r.pool.address]
+        for r in rows:
+            r.n_links = len(self._pool_links(r.pool))
         rows.sort(key=SORTABLE[self.sort_col], reverse=self.sort_desc)
         return rows
+
+    # ---- links helpers --------------------------------------------------
+    def _pool_links(self, p: Pool) -> list[tuple[str, str, str]]:
+        """(token symbol, label, url) for both tokens, base token first."""
+        order = (
+            [(p.token1, p.token1_addr), (p.token0, p.token0_addr)]
+            if p.token0.upper() == (self.quote or "USDG").upper()
+            else [(p.token0, p.token0_addr), (p.token1, p.token1_addr)]
+        )
+        out: list[tuple[str, str, str]] = []
+        for sym, addr in order:
+            info = self.infos_all.get(addr) or self.meta.get(p.chain_id, addr)
+            for label, url in info.links if info else []:
+                out.append((sym, label, url))
+        return out
+
+    def _links_cell(self, p: Pool) -> Text:
+        links = self._pool_links(p)
+        known = all(
+            (a in self.infos_all or self.meta.get(p.chain_id, a))
+            for a in (p.token0_addr, p.token1_addr)
+            if a
+        )
+        if not known:
+            return Text("…", style="dim")
+        if not links:
+            return Text("-", style="dim")
+        core = ("WEB", "X", "TG", "DC")
+        labels = {label for _, label, _ in links}
+        t = Text()
+        for label in core:
+            if label in labels:
+                t.append(label, style="bold black on #ffb000")
+                t.append(" ")
+        extra = sum(1 for _, label, _ in links if label not in core)
+        if extra:
+            t.append(f"+{extra}", style="dim")
+        return t
 
     def _column_labels(self) -> list[Text]:
         out: list[Text] = []
@@ -222,7 +329,7 @@ class CuratorApp(App[None]):
 
     def _rebuild(self) -> None:
         self.rows = self._current_rows()
-        table = self.query_one("#table", DataTable)
+        table = self.main.query_one("#table", DataTable)
         table.clear(columns=True)
         for label, name in zip(self._column_labels(), COLUMNS, strict=True):
             table.add_column(label, key=name)
@@ -249,6 +356,7 @@ class CuratorApp(App[None]):
                 Text(_pct(p.s7d.apr, 0), justify="right"),
                 Text(f"{s.score:5.1f}", justify="right", style="bold #ffb000"),
                 _grade_text(s.grade),
+                self._links_cell(p),
                 Text(" ".join(s.flags), style="magenta"),
                 key=p.address + p.protocol,
             )
@@ -258,11 +366,12 @@ class CuratorApp(App[None]):
             f"sort {self.sort_col} {'desc' if self.sort_desc else 'asc'}   "
             f"{self.profile.blurb}"
         )
+        self._enrich_table(self.rows)
         if self.rows:
             table.move_cursor(row=0)
             self._render_detail(self.rows[0])
         else:
-            self.query_one("#detail", Static).update(
+            self.main.query_one("#detail", Static).update(
                 Text(
                     "no pool passes this profile — try 3/4 or press u to widen quote",
                     style="red",
@@ -276,13 +385,14 @@ class CuratorApp(App[None]):
         proto = (self.protocol_filter or "ALL").upper()
         quote = self.quote or "ANY"
         cloud = "  CLOUD:ON" if self.cloud_key else ""
-        self.query_one("#topbar", Static).update(
+        img = f"  IMG:{self.image_mode.upper()}"
+        self.main.query_one("#topbar", Static).update(
             f" KRYSTAL CURATOR   {chain}({self.chain_id})   QUOTE:{quote}   PROTO:{proto}   "
-            f"PROFILE:{self.profile.name}   {ts}{cloud}"
+            f"PROFILE:{self.profile.name}   {ts}{cloud}{img}"
         )
 
     def _set_status(self, msg: str) -> None:
-        self.query_one("#status", Static).update(msg)
+        self.main.query_one("#status", Static).update(msg)
 
     def _render_detail(self, s: Scored) -> None:
         p = s.pool
@@ -355,7 +465,7 @@ class CuratorApp(App[None]):
             "",
         )
         t.add_row(self.profile.name, b)
-        self.query_one("#detail_body", Static).update(t)
+        self.main.query_one("#detail_body", Static).update(t)
         self._render_hero(s)
         self._enrich(p)
 
@@ -384,7 +494,7 @@ class CuratorApp(App[None]):
                 t.append("  …\n", style="dim")
             else:
                 t.append("  no links\n", style="dim")
-        self.query_one("#hero_text", Static).update(t)
+        self.main.query_one("#hero_text", Static).update(t)
 
     @work(thread=True, exclusive=True, group="enrich")
     def _enrich(self, p: Pool) -> None:
@@ -392,20 +502,56 @@ class CuratorApp(App[None]):
         infos = self.meta.fetch(p.chain_id, addrs)
         logos: dict[str, Path | None] = {}
         for addr, fallback in ((p.token0_addr, p.token0_logo), (p.token1_addr, p.token1_logo)):
+            if self.image_cls is None:
+                break
             info = infos.get(addr)
             url = (info.image_url if info else "") or fallback
             logos[addr] = self.meta.logo_path(url)
         self.call_from_thread(self._apply_enrich, p, infos, logos)
 
+    @work(thread=True, exclusive=True, group="enrich_table")
+    def _enrich_table(self, rows: list[Scored]) -> None:
+        """Fetch link metadata for every token in the table (batched), then fill LINKS cells."""
+        if not rows:
+            return
+        chain_id = rows[0].pool.chain_id
+        addrs = sorted({a for r in rows for a in (r.pool.token0_addr, r.pool.token1_addr) if a})
+        infos = self.meta.fetch(chain_id, addrs)
+        self.call_from_thread(self._apply_enrich_table, rows, infos)
+
+    def _apply_enrich_table(self, rows: list[Scored], infos: dict[str, TokenInfo]) -> None:
+        self.infos_all.update(infos)
+        try:
+            table = self.main.query_one("#table", DataTable)
+        except NoMatches:
+            return  # app is shutting down
+        changed = False
+        for r in rows:
+            n = len(self._pool_links(r.pool))
+            changed |= n != r.n_links
+            r.n_links = n
+            key = r.pool.address + r.pool.protocol
+            try:
+                table.update_cell(key, "LINKS", self._links_cell(r.pool))
+            except KeyError:
+                continue  # table was rebuilt meanwhile
+        if changed and self.sort_col == "LINKS":
+            self._rebuild()
+
     def _apply_enrich(
         self, p: Pool, infos: dict[str, TokenInfo], logos: dict[str, Path | None]
     ) -> None:
-        cur = self._selected()
+        try:
+            cur = self._selected()
+        except NoMatches:
+            return  # app is shutting down
         if cur is None or cur.pool.address != p.address:
             return  # selection moved on
         self.infos = infos
         for wid, addr in (("#logo0", p.token0_addr), ("#logo1", p.token1_addr)):
-            img = self.query_one(wid, Image)
+            if self.image_cls is None:
+                break
+            img = self.main.query_one(wid, self.image_cls)
             path = logos.get(addr)
             try:
                 img.image = str(path) if path else None
@@ -430,10 +576,10 @@ class CuratorApp(App[None]):
         self._rebuild()
 
     def on_input_submitted(self, _: Input.Submitted) -> None:
-        self.query_one("#table", DataTable).focus()
+        self.main.query_one("#table", DataTable).focus()
 
     def _selected(self) -> Scored | None:
-        table = self.query_one("#table", DataTable)
+        table = self.main.query_one("#table", DataTable)
         i = table.cursor_row
         return self.rows[i] if 0 <= i < len(self.rows) else None
 
@@ -486,27 +632,23 @@ class CuratorApp(App[None]):
             webbrowser.open(s.pool.url)
             self._set_status(f"opened {s.pool.pair}")
 
-    def action_open_link(self, label: str) -> None:
+    def action_links(self) -> None:
         s = self._selected()
         if s is None:
             return
-        p = s.pool
-        # prefer the non-USDG side, then the other token
-        order = (
-            [p.token1_addr, p.token0_addr]
-            if p.token0.upper() == "USDG"
-            else [p.token0_addr, p.token1_addr]
-        )
-        for addr in order:
-            info = self.infos.get(addr)
-            if not info:
-                continue
-            for lab, url in info.links:
-                if lab == label:
-                    webbrowser.open(url)
-                    self._set_status(f"opened {label} {url}")
-                    return
-        self._set_status(f"no {label} link for {p.pair}")
+        links = self._pool_links(s.pool)
+        if not links:
+            self._set_status(f"no social links for {s.pool.pair}")
+            return
+        self.push_screen(LinksModal(s.pool, links), self._on_link_chosen)
+
+    def _on_link_chosen(self, url: str | None) -> None:
+        if url:
+            webbrowser.open(url)
+            self._set_status(f"opened {url}")
+
+    def on_data_table_row_selected(self, _: DataTable.RowSelected) -> None:
+        self.action_links()
 
     def action_export_csv(self) -> None:
         if not self.rows:
@@ -519,16 +661,16 @@ class CuratorApp(App[None]):
         self._set_status(f"saved {path}")
 
     def action_find(self) -> None:
-        box = self.query_one("#find", Input)
+        box = self.main.query_one("#find", Input)
         box.add_class("visible")
         box.focus()
 
     def action_clear_find(self) -> None:
-        box = self.query_one("#find", Input)
+        box = self.main.query_one("#find", Input)
         box.value = ""
         box.remove_class("visible")
         self.find_text = ""
-        self.query_one("#table", DataTable).focus()
+        self.main.query_one("#table", DataTable).focus()
         self._rebuild()
 
 

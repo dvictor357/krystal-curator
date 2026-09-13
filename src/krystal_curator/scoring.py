@@ -21,6 +21,7 @@ class Scored:
     parts: dict[str, float] = field(default_factory=dict)  # 0..1 per component
     grade: str = "?"
     flags: list[str] = field(default_factory=list)
+    n_links: int = 0  # filled by the UI once token metadata is known
 
     @property
     def base(self) -> str:

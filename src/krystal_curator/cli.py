@@ -42,6 +42,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     tui = sub.add_parser("tui", help="interactive terminal (default)")
     _common(tui)
+    tui.add_argument(
+        "--images",
+        choices=["auto", "tgp", "sixel", "halfcell", "unicode", "off"],
+        default=None,
+        help="logo renderer; default auto (Kitty/Sixel graphics), halfcell on Warp. "
+        "Also via KRYSTAL_IMAGE env.",
+    )
 
     scan = sub.add_parser("scan", help="print ranked table, optional CSV")
     _common(scan)
@@ -152,6 +159,7 @@ def run_tui(args: argparse.Namespace) -> int:
         profile=args.profile,
         quote=quote,
         protocols=set(args.protocol) or None,
+        image_mode=args.images,
     ).run()
     return 0
 
