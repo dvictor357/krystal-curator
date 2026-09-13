@@ -28,6 +28,7 @@ from . import api
 from .enrich import TokenInfo, TokenMeta
 from .models import Pool
 from .profiles import PROFILES, RiskProfile
+from .radar import render_radar
 from .scoring import Scored, curate
 
 # textual-image renders palette PNGs fine; PIL just complains about the conversion.
@@ -53,6 +54,15 @@ def pick_image_mode(explicit: str | None = None) -> str:
         return "halfcell"
     return "auto"
 
+
+RADAR_LABEL = {
+    "yield": "YLD",
+    "turnover": "TURN",
+    "consistency": "CONS",
+    "liveness": "LIVE",
+    "depth": "DEPTH",
+    "risk": "RISK",
+}
 
 COLUMNS = (
     "#",
@@ -449,21 +459,21 @@ class CuratorApp(App[None]):
             t.add_row("TX24", f"{p.tx24:,}")
         t.add_row("", "")
 
-        b = Table(box=None, pad_edge=False, expand=True, header_style="bold #ffb000")
+        b = Table(box=None, pad_edge=False, header_style="bold #ffb000")
         b.add_column("SCORE")
         b.add_column("W", justify="right")
         b.add_column("PTS", justify="right")
-        b.add_column("")
+        axes: list[tuple[str, float]] = []
         for k, wt in self.profile.weights.items():
             pts = s.parts.get(k, 0.0)
-            bar = "█" * int(pts * 20) + "░" * (20 - int(pts * 20))
-            b.add_row(k, f"{wt:.0f}", f"{pts:.2f}", Text(bar, style="#ffb000"))
-        b.add_row(
-            Text("TOTAL", style="bold"),
-            "",
-            Text(f"{s.score:.1f}", style="bold white"),
-            "",
-        )
+            b.add_row(k, f"{wt:.0f}", Text(f"{pts:.2f}", style="#ffb000"))
+            axes.append((RADAR_LABEL.get(k, k.upper()), pts))
+        b.add_row(Text("TOTAL", style="bold"), "", Text(f"{s.score:.1f}", style="bold white"))
+        chart = Table.grid(padding=(0, 2))
+        chart.add_column()
+        chart.add_column()
+        chart.add_row(b, render_radar(axes, cols=36, rows=13, show_values=False))
+        b = chart
         t.add_row(self.profile.name, b)
         self.main.query_one("#detail_body", Static).update(t)
         self._render_hero(s)
