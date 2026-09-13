@@ -325,8 +325,12 @@ def run_scan(args: argparse.Namespace) -> int:
         con.print(f"[red]{e}[/red]")
         return 2
     rows = curate(pools, prof, quote=quote, protocols=protos)[: args.top]
+    from .enrich import FlowCache
+
+    flows = FlowCache().fetch(args.chain, [s.pool.address for s in rows]) if rows else {}
     for s in rows:
         s.sim = simulate(s.pool, args.size)
+        s.flow = flows.get(s.pool.address)
     if not rows:
         con.print("[red]no pool passes this profile; try --profile aggressive or --quote any[/red]")
         return 1
@@ -361,6 +365,8 @@ def run_scan(args: argparse.Namespace) -> int:
         "Y7D%",
         "V/TVL",
         "CONS",
+        "TX1H",
+        "TX24",
         "σ%",
         "DD24",
         "MY$/D",
@@ -387,6 +393,8 @@ def run_scan(args: argparse.Namespace) -> int:
             f"{p.fee_yield_7d_daily * 100:.2f}",
             f"{p.turnover_24h:.1f}",
             f"{p.consistency:.2f}",
+            f"{s.flow.tx_h1:,}" if s.flow and s.flow.tx_h24 else "-",
+            f"{s.flow.tx_h24:,}" if s.flow and s.flow.tx_h24 else "-",
             f"{p.volatility:.1f}",
             f"{p.drawdown24h:.1f}",
             f"{s.sim.fee_day:,.0f}",

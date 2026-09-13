@@ -25,6 +25,7 @@ def app(tmp_path, monkeypatch):
     # no DexScreener / logo downloads in tests
     monkeypatch.setattr(tui_mod.TokenMeta, "fetch", lambda self, chain_id, addrs: {})
     monkeypatch.setattr(tui_mod.TokenMeta, "logo_path", lambda self, url: None)
+    monkeypatch.setattr(tui_mod.FlowCache, "fetch", lambda self, chain_id, addrs: {})
     a = tui_mod.CuratorApp(chain_id=4663, refresh_seconds=0, image_mode="off")
     a.store = Store(tmp_path / "t.sqlite3")
     a.monitor.store = a.store

@@ -31,7 +31,7 @@ from .advisor import Advice, advise, price_ladder
 from .analytics import idle_capital, real_roi, report_markdown, track_record
 from .api import KrystalError
 from .config import Config
-from .enrich import TokenInfo, TokenMeta
+from .enrich import Flow, FlowCache, TokenInfo, TokenMeta
 from .models import Pool
 from .monitor import Monitor
 from .position import simulate
@@ -93,6 +93,8 @@ COLUMNS = (
     "V/TVL",
     "CONS",
     "LIVE",
+    "TX1H",
+    "TX24",
     "σ%",
     "DD24",
     "MY$/D",
@@ -125,6 +127,22 @@ def _color_num(s: str, v: float, good_hi: float, bad_lo: float, *, invert: bool 
     hi, lo = (v <= bad_lo, v >= good_hi) if invert else (v >= good_hi, v <= bad_lo)
     style = "bold green" if hi else "bold red" if lo else ""
     return Text(s, style=style, justify="right")
+
+
+def _tx_cell(f: Flow | None, win: str) -> Text:
+    if f is None:
+        return Text("…", style="dim", justify="right")
+    n = f.tx_h1 if win == "h1" else f.tx_h24
+    if f.tx_h24 == 0:
+        return Text("-", style="dim", justify="right")
+    style = ""
+    if win == "h1":
+        style = "bold green" if f.pace >= 1.5 else "red" if f.pace < 0.3 else ""
+    elif n >= 5000:
+        style = "bold green"
+    elif n < 200:
+        style = "red"
+    return Text(f"{n:,}", style=style, justify="right")
 
 
 def _age_text(p: Pool) -> Text:
@@ -187,6 +205,8 @@ SORTABLE: dict[str, Callable[[Scored], float | str]] = {
     "RK": lambda s: s.grade,
     "LINKS": lambda s: s.n_links,
     "AGE": lambda s: s.pool.seen_days or 0.0,
+    "TX1H": lambda s: s.flow.tx_h1 if s.flow else -1,
+    "TX24": lambda s: s.flow.tx_h24 if s.flow else -1,
 }
 SORT_ORDER = [c for c in COLUMNS if c in SORTABLE]
 # text columns and risk columns read naturally ascending
@@ -985,6 +1005,7 @@ class CuratorApp(App[None]):
         self.last_refresh: datetime | None = None
         self.cloud_key = api.cloud_key()
         self.meta = TokenMeta()
+        self.flows = FlowCache()
         self.infos: dict[str, TokenInfo] = {}  # for the selected pool, by address
         self.infos_all: dict[str, TokenInfo] = {}  # every token seen in the table, by address
 
@@ -1104,6 +1125,7 @@ class CuratorApp(App[None]):
             r.sim = simulate(r.pool, self.position_size)
             r.watched = self.store.is_watched(r.pool)
             r.delta, r.spark = self._hist(r.pool)
+            r.flow = self.flows.get(r.pool.address)
         rows.sort(key=SORTABLE[self.sort_col], reverse=self.sort_desc)
         return rows
 
@@ -1185,6 +1207,8 @@ class CuratorApp(App[None]):
                 if p.consistency <= 1.5
                 else Text(_pct(p.consistency), style="bold red", justify="right"),
                 _color_num(_pct(p.liveness), p.liveness, 0.8, 0.2),
+                _tx_cell(s.flow, "h1"),
+                _tx_cell(s.flow, "h24"),
                 _color_num(_pct(p.volatility, 1), p.volatility, 10, 40, invert=True),
                 _color_num(_pct(p.drawdown24h, 1), abs(p.drawdown24h), 10, 40, invert=True),
                 Text(_usd(s.sim.fee_day), justify="right", style="bold yellow"),
@@ -1204,6 +1228,7 @@ class CuratorApp(App[None]):
             f"{self.profile.blurb}"
         )
         self._enrich_table(self.rows)
+        self._enrich_flow(self.rows)
         if self.rows:
             idx = next(
                 (
@@ -1306,6 +1331,29 @@ class CuratorApp(App[None]):
             "SIGNAL",
             f"turnover {p.turnover_24h:.2f}x   consistency {p.consistency:.2f}   liveness {p.liveness:.2f}",
         )
+        f = s.flow or self.flows.get(p.address)
+        if f is None:
+            t.add_row("FLOW", Text("fetching swap counts …", style="dim"))
+        elif f.tx_h24 == 0:
+            t.add_row("FLOW", Text("no DexScreener data for this pool", style="dim"))
+        else:
+            b1 = f.buy_ratio_h1
+            pace_style = "bold green" if f.pace >= 1.5 else "red" if f.pace < 0.3 else "white"
+            t.add_row(
+                "FLOW",
+                Text.assemble(
+                    (
+                        f"swaps 5m {f.tx_m5:,}  1h {f.tx_h1:,}  6h {f.tx_h6:,}  24h {f.tx_h24:,}   ",
+                        "",
+                    ),
+                    (f"pace {f.pace:.1f}×", pace_style),
+                    (f"   avg trade {f.avg_trade_h24:,.0f}$   ", ""),
+                    (
+                        f"buys 1h {b1 * 100:.0f}%" if b1 is not None else "",
+                        "green" if b1 and b1 > 0.6 else "red" if b1 and b1 < 0.4 else "",
+                    ),
+                ),
+            )
         auto = "yes" if p.lp_auto else "NO"
         dyn = "dynamic" if p.dynamic_fee else "fixed"
         inc = (
@@ -1490,6 +1538,41 @@ class CuratorApp(App[None]):
             url = (info.image_url if info else "") or fallback
             logos[addr] = self.meta.logo_path(url)
         self.call_from_thread(self._apply_enrich, p, infos, logos)
+
+    @work(thread=True, exclusive=True, group="enrich_flow")
+    def _enrich_flow(self, rows: list[Scored]) -> None:
+        """Swap counts for every row (DexScreener, batched, 90s cache)."""
+        if not rows:
+            return
+        flows = self.flows.fetch(rows[0].pool.chain_id, [r.pool.address for r in rows])
+        self.call_from_thread(self._apply_flow, rows, flows)
+
+    def _apply_flow(self, rows: list[Scored], flows: dict[str, Flow]) -> None:
+        try:
+            table = self.main.query_one("#table", DataTable)
+        except NoMatches:
+            return
+        changed = False
+        for r in rows:
+            f = flows.get(r.pool.address)
+            if f is None or f is r.flow:
+                continue
+            changed = True
+            r.flow = f
+            key = r.pool.address + r.pool.protocol
+            try:
+                table.update_cell(key, "TX1H", _tx_cell(f, "h1"))
+                table.update_cell(key, "TX24", _tx_cell(f, "h24"))
+            except KeyError:
+                continue
+        if not changed:
+            return
+        if self.sort_col in ("TX1H", "TX24"):
+            self._rebuild()
+            return
+        cur = self._selected()
+        if cur is not None:
+            self._render_detail(cur)
 
     @work(thread=True, exclusive=True, group="enrich_table")
     def _enrich_table(self, rows: list[Scored]) -> None:

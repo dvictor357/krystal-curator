@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from .enrich import Flow
 from .models import Pool
 from .position import Sim
 from .profiles import RiskProfile
@@ -28,6 +29,7 @@ class Scored:
     watched: bool = False
     delta: Delta | None = None  # change vs ~24h-old local snapshot
     spark: str = ""  # fee24 sparkline from local snapshots
+    flow: Flow | None = None  # swap counts (DexScreener), filled by the UI
 
     @property
     def base(self) -> str:

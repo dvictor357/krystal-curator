@@ -36,7 +36,10 @@ uv run krystal-curator status      # daemon heartbeat, last alerts, history size
 TUI keys: `1-4` profile · `u` toggle USDG-only · `p` cycle protocol · `s` next sort column · `S` asc/desc · click a header to sort by it · `*` watch/unwatch · `W` watched only · `a` auto-refresh on/off · `$` position size ·
 `r` refresh · `o` open pool on Krystal · `l` or `Enter` open the links popup (pool page + website / X / Telegram / Discord …, Enter opens) · `e` export CSV to `exports/` · `/` find · `q` quit.
 
-The `LINKS` column shows which socials each pool's tokens have (sortable).
+The `LINKS` column shows which socials each pool's tokens have (sortable). `TX1H` / `TX24`
+are swap counts from DexScreener (free, 90 s cache): green 1h = pace ≥1.5× the daily
+average, red = <0.3×. The detail FLOW row adds 5m/6h counts, average trade size and the
+1h buy share. `LIVE` is the same idea in dollars (last-hour volume vs daily pace).
 
 The detail panel shows both token logos and clickable social links. Logo renderer: `--images auto|tgp|sixel|halfcell|unicode|off` or `KRYSTAL_IMAGE=…`. `auto` uses Kitty/Sixel graphics (Ghostty, Kitty, WezTerm, iTerm2); Warp is detected and gets coloured half-blocks since it does not render graphics escapes.
 
