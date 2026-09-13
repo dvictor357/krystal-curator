@@ -184,3 +184,34 @@ PositionsScreen {
     color: #ffb000;
     padding: 0 1;
 }
+
+RotationModal {
+    align: center middle;
+    background: rgba(0, 0, 0, 0.6);
+}
+#rot_box {
+    width: 130;
+    max-width: 96%;
+    height: auto;
+    max-height: 85%;
+    border: solid #ff9a00;
+    border-title-color: #ffb000;
+    border-title-style: bold;
+    background: #000000;
+    padding: 0 1;
+}
+#rot_head {
+    height: 2;
+    margin-bottom: 1;
+}
+#rot_list {
+    height: auto;
+    max-height: 30;
+    background: #000000;
+    color: #d8d8d8;
+    border: none;
+}
+#rot_list > .option-list--option-highlighted {
+    background: #3a2600;
+    color: #ffffff;
+}

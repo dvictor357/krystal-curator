@@ -36,6 +36,7 @@ from .position import simulate
 from .positions import POSITIONS_UNITS, Position, fetch_positions
 from .profiles import PROFILES, RiskProfile
 from .radar import render_radar
+from .rotation import ROTATE_COST_PCT, Rotation, plan
 from .scoring import Scored, curate, score_pool
 from .store import Delta, Store, sparkline
 from .vaults import Vault, fetch_vaults
@@ -126,6 +127,12 @@ def _color_num(s: str, v: float, good_hi: float, bad_lo: float, *, invert: bool 
     return Text(s, style=style, justify="right")
 
 
+def _days(d: float | None) -> str:
+    if d is None:
+        return "-"
+    return "<0.1d" if d < 0.1 else f"{d:.1f}d"
+
+
 def _delta_text(pct: float | None) -> Text:
     if pct is None:
         return Text("·", style="dim", justify="right")
@@ -206,6 +213,56 @@ class LinksModal(ModalScreen[str | None]):
         self.dismiss(str(ev.option.id))
 
 
+class RotationModal(ModalScreen[str | None]):
+    """Full rotation list for one position; Enter/click jumps the screener to that pool."""
+
+    BINDINGS: ClassVar = [Binding("escape", "dismiss(None)", "CLOSE")]
+
+    def __init__(self, pos: Position, rot: Rotation, profile_name: str) -> None:
+        super().__init__()
+        self.pos = pos
+        self.rot = rot
+        self.profile_name = profile_name
+
+    def compose(self) -> ComposeResult:
+        opts: list[Option] = []
+        for cd in self.rot.candidates:
+            pb = f"{_days(cd.payback_days):>6}"
+            line = Text.assemble(
+                (f"{cd.pool.pair:<18}", "bold white"),
+                (f"{cd.pool.protocol:<10}", "cyan"),
+                (f"{cd.pool.fee_tier_pct:>5.2f}%  ", ""),
+                (f"{cd.scored.grade}  ", "bold"),
+                (f"net {cd.sim.net_day:>+8,.0f}$/d  ", "green" if cd.sim.net_day > 0 else "red"),
+                (f"uplift {cd.uplift_day:>+8,.0f}$/d  ", "green" if cd.uplift_day > 0 else "red"),
+                (f"payback {pb}  ", ""),
+                (f"share {cd.sim.share * 100:>5.1f}%  ", "red" if cd.sim.share >= 0.25 else ""),
+                (f"fee/IL {cd.sim.fee_il_ratio:>5.1f}×", "dim"),
+            )
+            opts.append(Option(line, id=cd.pool.address))
+        with Vertical(id="rot_box") as box:
+            box.border_title = (
+                f"ROTATE {self.pos.pair} ({self.pos.value:,.0f}$)  profile {self.profile_name}"
+            )
+            yield Static(
+                Text.assemble(
+                    (self.rot.verdict + "\n", "bold #ffb000"),
+                    (
+                        (
+                            f"current net {self.rot.current_net_day:+,.0f}$/d   "
+                            f"switch cost {self.rot.cost:,.0f}$   enter = screen pool   esc close"
+                        ),
+                        "dim",
+                    ),
+                ),
+                id="rot_head",
+            )
+            yield OptionList(*opts, id="rot_list")
+
+    def on_option_list_option_selected(self, ev: OptionList.OptionSelected) -> None:
+        self.dismiss(str(ev.option.id))
+
+
 POS_COLUMNS = (
     "VAULT",
     "PAIR",
@@ -234,6 +291,11 @@ class PositionsScreen(Screen[str | None]):
         Binding("escape", "dismiss(None)", "BACK"),
         Binding("r", "refresh", "REFRESH"),
         Binding("c", "toggle_closed", "CLOSED"),
+        Binding("x", "rotate", "ROTATE?"),
+        Binding("1", "profile('conservative')", "CONS", show=False),
+        Binding("2", "profile('balanced')", "BAL", show=False),
+        Binding("3", "profile('aggressive')", "AGG", show=False),
+        Binding("4", "profile('degen')", "DEGEN", show=False),
         Binding("o", "open_url", "OPEN"),
         Binding("enter", "jump", "SCREEN POOL", show=True),
     ]
@@ -491,6 +553,61 @@ class PositionsScreen(Screen[str | None]):
         t.add_row("PERF", perf)
         t.add_row("", "")
 
+        # ---- rotation / opportunity cost
+        if p.status != "CLOSED" and p.value > 0:
+            rot = c.rotation_for(p, top=5)
+            r = Table(box=None, pad_edge=False, expand=True, header_style="bold #ffb000")
+            r.add_column("POOL")
+            r.add_column("RK", justify="center")
+            r.add_column("MY$/D", justify="right")
+            r.add_column("IL/D", justify="right")
+            r.add_column("NET/D", justify="right")
+            r.add_column("SHARE", justify="right")
+            r.add_column("UPLIFT", justify="right")
+            r.add_column("PAYBACK", justify="right")
+            cur_il = rot.current_sim.il_day if rot.current_sim else 0.0
+            r.add_row(
+                Text("current (realised)", style="bold white"),
+                _grade_text(sc.grade) if sc else Text("-"),
+                f"{adv.fee_per_day:,.0f}",
+                f"{cur_il:,.0f}",
+                Text(f"{rot.current_net_day:+,.0f}", style="bold"),
+                f"{rot.current_sim.share * 100:.1f}%" if rot.current_sim else "-",
+                "",
+                "",
+            )
+            for cd in rot.candidates:
+                r.add_row(
+                    Text(cd.pool.pair, style="white", no_wrap=True),
+                    _grade_text(cd.scored.grade),
+                    f"{cd.sim.fee_day:,.0f}",
+                    f"{cd.sim.il_day:,.0f}",
+                    _color_num(f"{cd.sim.net_day:+,.0f}", cd.sim.net_day, 1, 0),
+                    _color_num(f"{cd.sim.share * 100:.1f}%", cd.sim.share, 0.0, 0.25, invert=True),
+                    _color_num(f"{cd.uplift_day:+,.0f}", cd.uplift_day, 1, 0),
+                    _days(cd.payback_days),
+                )
+            verdict_style = (
+                "bold green"
+                if rot.verdict.startswith("ROTATE")
+                else "bold yellow"
+                if rot.verdict.startswith("CONSIDER")
+                else "bold white"
+            )
+            t.add_row(
+                "ROTATE",
+                Group(
+                    Text(rot.verdict, style=verdict_style),
+                    Text(
+                        f"same {p.value:,.0f}$ in {c.profile.name.lower()} pools (1-4 to change), "
+                        f"switch cost {rot.cost:,.0f}$ ({ROTATE_COST_PCT}%), x = full list",
+                        style="dim",
+                    ),
+                    r,
+                ),
+            )
+            t.add_row("", "")
+
         # ---- pool health from the screener
         if sc is not None and pool is not None:
             h = Table.grid(padding=(0, 2))
@@ -533,6 +650,23 @@ class PositionsScreen(Screen[str | None]):
     def action_toggle_closed(self) -> None:
         self.show_closed = not self.show_closed
         self._fill()
+
+    def action_profile(self, key: str) -> None:
+        self.curator.profile = PROFILES[key]
+        p = self._selected()
+        if p:
+            self._render_detail(p)
+
+    def action_rotate(self) -> None:
+        p = self._selected()
+        if p is None or p.status == "CLOSED":
+            return
+        rot = self.curator.rotation_for(p, top=20)
+        self.app.push_screen(RotationModal(p, rot, self.curator.profile.name), self._on_rotate_pick)
+
+    def _on_rotate_pick(self, address: str | None) -> None:
+        if address:
+            self.dismiss(address)
 
     def action_open_url(self) -> None:
         p = self._selected()
@@ -698,6 +832,18 @@ class CuratorApp(App[None]):
 
     def advice_for(self, p: Position) -> Advice:
         return advise(p, self.sigma_for(p))
+
+    def rotation_for(self, p: Position, top: int = 8) -> Rotation:
+        sc = self.pool_for(p.pool_address, p.pool_alt)
+        return plan(
+            p,
+            self.advice_for(p).fee_per_day,
+            self.pools,
+            self.profile,
+            quote=self.quote,
+            current_pool=sc.pool if sc else None,
+            top=top,
+        )
 
     def _check_positions(self) -> None:
         """Toast on state changes since the previous refresh; first pass only warns on

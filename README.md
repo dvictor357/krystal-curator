@@ -88,6 +88,11 @@ units (pool volatility) and in expected days for a random walk to reach it, real
 vs the pool's fee yield (are you capturing more or less than an average LP), and the pool's
 screener health with its radar.
 
+ROTATE block: the same dollars simulated in the screener's top pools for the active profile
+(`1`–`4` switch it inside the view): my$/d, IL/d, net/d, share, uplift vs the position's
+realised net, and payback of a 0.3 % switch cost. Verdict line says ROTATE / CONSIDER / STAY.
+`x` opens the full ranked list; Enter jumps the screener to that pool.
+
 Vaults are refetched on every screener refresh (free API), so monitoring runs without
 opening `P`: the main top bar shows `POS:n OOR:k EDGE:m 24h+$`, and toasts fire when a
 position leaves / re-enters range, an edge comes within 0.5σ, the pool's grade worsens, or
