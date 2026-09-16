@@ -10,8 +10,7 @@ import os
 import time
 from typing import Any
 
-import httpx
-
+from . import net
 from .models import Pool
 
 PUBLIC_TOP_POOLS = "https://api.krystal.app/all/v2/lp_explorer/top_pools"
@@ -87,11 +86,12 @@ def fetch_krystal_pools(chain_id: int, *, limit: int = 5000, timeout: float = 30
         "limit": limit,
     }
     try:
-        r = httpx.get(PUBLIC_TOP_POOLS, params=params, headers=_HEADERS, timeout=timeout)
-        r.raise_for_status()
+        r = net.get(PUBLIC_TOP_POOLS, params=params, headers=_HEADERS, timeout=timeout)
+        if r.status_code != 200:
+            raise net.status_error(r, f"top_pools chainId={chain_id}")
         data = r.json()
-    except httpx.HTTPError as e:
-        raise KrystalError(f"top_pools chainId={chain_id}: {e}") from e
+    except (net.HttpError, ValueError) as e:
+        raise KrystalError(f"top_pools chainId={chain_id}: {e}") from None
     rows = data.get("result") if isinstance(data, dict) else data
     if not isinstance(rows, list):
         raise KrystalError(
@@ -101,7 +101,9 @@ def fetch_krystal_pools(chain_id: int, *, limit: int = 5000, timeout: float = 30
 
 
 def cloud_key() -> str | None:
-    return os.environ.get(CLOUD_KEY_ENV) or None
+    key = os.environ.get(CLOUD_KEY_ENV) or None
+    net.register_secret(key)  # never let it into an error string, log line or toast
+    return key
 
 
 def wallet() -> str | None:
@@ -118,11 +120,13 @@ def fetch_tx_count_24h(pool: Pool, key: str, *, timeout: float = 30.0) -> int | 
     now = int(time.time())
     url = f"{CLOUD_BASE}/pools/{pool.chain_id}/{pool.address}/transactions"
     params = {"startTime": now - 86400, "endTime": now, "limit": 5000}
+    net.register_secret(key)
     try:
-        r = httpx.get(url, params=params, headers={**_HEADERS, "KC-APIKey": key}, timeout=timeout)
-        r.raise_for_status()
+        r = net.get(url, params=params, headers={**_HEADERS, "KC-APIKey": key}, timeout=timeout)
+        if r.status_code != 200:
+            return None
         data = r.json()
-    except httpx.HTTPError:
+    except (net.HttpError, ValueError):
         return None
     if isinstance(data, list):
         return len(data)

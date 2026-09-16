@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
-import httpx
+from . import net
 
+log = logging.getLogger("krystal.telegram")
 TOKEN_ENV = "TELEGRAM_BOT_TOKEN"
 CHAT_ENV = "TELEGRAM_CHAT_ID"
 _MAX = 4000  # Telegram hard limit is 4096 chars per message
@@ -14,8 +16,24 @@ _MAX = 4000  # Telegram hard limit is 4096 chars per message
 
 class Telegram:
     def __init__(self, token: str, chat_id: str) -> None:
+        net.register_secret(token)  # Telegram puts it in the URL: redact everywhere
         self.base = f"https://api.telegram.org/bot{token}"
         self.chat_id = chat_id
+
+    def _call(self, method: str, *, timeout: float, retries: int = 2, **kw) -> dict | None:
+        """One Bot API call; the parsed body on 200, else None (already logged, redacted)."""
+        try:
+            r = net.post(f"{self.base}/{method}", timeout=timeout, retries=retries, **kw)
+        except net.HttpError as e:
+            log.warning("telegram %s: %s", method, e)
+            return None
+        if r.status_code != 200:
+            log.warning("telegram %s: HTTP %s %s", method, r.status_code, net.redact(r.text[:200]))
+            return None
+        try:
+            return r.json()
+        except ValueError:
+            return None
 
     @classmethod
     def from_env(cls) -> Telegram | None:
@@ -35,11 +53,7 @@ class Telegram:
                 payload["parse_mode"] = "HTML"
             if reply_markup and n == len(chunks) - 1:
                 payload["reply_markup"] = reply_markup
-            try:
-                r = httpx.post(f"{self.base}/sendMessage", json=payload, timeout=20)
-                ok &= r.status_code == 200
-            except httpx.HTTPError:
-                ok = False
+            ok &= self._call("sendMessage", json=payload, timeout=20) is not None
         return ok
 
     def get_updates(self, offset: int | None, timeout: int = 0) -> list[dict]:
@@ -47,52 +61,41 @@ class Telegram:
         params: dict = {"timeout": timeout, "allowed_updates": ["message", "callback_query"]}
         if offset is not None:
             params["offset"] = offset
-        try:
-            r = httpx.get(f"{self.base}/getUpdates", params=params, timeout=timeout + 10)
-            if r.status_code != 200:
-                return []
-            return (r.json() or {}).get("result") or []
-        except (httpx.HTTPError, ValueError):
-            return []
+        # long poll: a read timeout here is normal-ish, so no retry beyond connect errors
+        body = self._call("getUpdates", json=params, timeout=timeout + 10, retries=1)
+        return (body or {}).get("result") or []
 
     def answer_callback(self, callback_id: str, text: str = "") -> None:
-        try:
-            httpx.post(
-                f"{self.base}/answerCallbackQuery",
-                json={"callback_query_id": callback_id, "text": text[:200]},
-                timeout=10,
-            )
-        except httpx.HTTPError:
-            pass
+        self._call(
+            "answerCallbackQuery",
+            json={"callback_query_id": callback_id, "text": text[:200]},
+            timeout=10,
+            retries=0,
+        )
 
     def set_commands(self, commands: list[tuple[str, str]]) -> bool:
-        try:
-            r = httpx.post(
-                f"{self.base}/setMyCommands",
-                json={"commands": [{"command": c, "description": d} for c, d in commands]},
-                timeout=15,
-            )
-            return r.status_code == 200
-        except httpx.HTTPError:
-            return False
+        body = self._call(
+            "setMyCommands",
+            json={"commands": [{"command": c, "description": d} for c, d in commands]},
+            timeout=15,
+        )
+        return body is not None
 
     def send_file(self, path: Path, caption: str = "") -> bool:
         try:
             with path.open("rb") as f:
-                r = httpx.post(
-                    f"{self.base}/sendDocument",
+                body = self._call(
+                    "sendDocument",
                     data={"chat_id": self.chat_id, "caption": caption[:1000]},
                     files={"document": (path.name, f, "text/markdown")},
                     timeout=60,
+                    retries=0,  # a file handle cannot be re-read by a retry
                 )
-            return r.status_code == 200
-        except (httpx.HTTPError, OSError):
+            return body is not None
+        except OSError:
             return False
 
     def whoami(self) -> str | None:
         """Bot username if the token works, else None."""
-        try:
-            r = httpx.get(f"{self.base}/getMe", timeout=15)
-            return (r.json().get("result") or {}).get("username") if r.status_code == 200 else None
-        except (httpx.HTTPError, ValueError):
-            return None
+        body = self._call("getMe", timeout=15)
+        return ((body or {}).get("result") or {}).get("username")

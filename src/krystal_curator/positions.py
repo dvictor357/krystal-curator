@@ -5,8 +5,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-import httpx
-
+from . import net
 from .api import _HEADERS, CLOUD_BASE, KrystalError
 from .models import fnum
 
@@ -138,8 +137,9 @@ def fetch_positions(
     params: dict = {"wallet": wallet, "positionStatus": status, "limit": 500}
     if chain_ids:
         params["chainIds"] = ",".join(str(c) for c in chain_ids)
+    net.register_secret(key)
     try:
-        r = httpx.get(
+        r = net.get(
             f"{CLOUD_BASE}/positions",
             params=params,
             headers={**_HEADERS, "KC-APIKey": key},
@@ -149,10 +149,11 @@ def fetch_positions(
             raise KrystalError("Cloud API: invalid KC-APIKey (401)")
         if r.status_code == 402:
             raise KrystalError("Cloud API: no units left (402) — top up at cloud.krystal.app")
-        r.raise_for_status()
+        if r.status_code != 200:
+            raise net.status_error(r, f"positions {wallet[:8]}…")
         data = r.json()
-    except httpx.HTTPError as e:
-        raise KrystalError(f"positions {wallet[:8]}…: {e}") from e
+    except (net.HttpError, ValueError) as e:
+        raise KrystalError(f"positions {wallet[:8]}…: {e}") from None
     rows = data
     if isinstance(data, dict):
         rows = data.get("positions") or data.get("data") or data.get("result") or []

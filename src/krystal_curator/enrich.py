@@ -9,16 +9,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import httpx
-
+from . import net
 from .config import data_dir
 
 DEXSCREENER_TOKENS = "https://api.dexscreener.com/tokens/v1"
+log = logging.getLogger("krystal.enrich")
 
 # Krystal chainId -> DexScreener chain slug
 DEX_CHAIN: dict[int, str] = {
@@ -151,13 +152,12 @@ class TokenMeta:
         if path.exists() and path.stat().st_size > 0:
             return path
         try:
-            r = httpx.get(url, headers=_HEADERS, timeout=15, follow_redirects=True)
-            r.raise_for_status()
-            if not r.headers.get("content-type", "").startswith("image/"):
+            r = net.get(url, headers=_HEADERS, timeout=15, follow_redirects=True, retries=1)
+            if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image/"):
                 return None
             path.write_bytes(r.content)
             return path
-        except (httpx.HTTPError, OSError):
+        except (net.HttpError, OSError):
             return None
 
 
@@ -166,12 +166,15 @@ def _dexscreener(slug: str, addresses: list[str]) -> dict[str, TokenInfo]:
     for i in range(0, len(addresses), 30):
         chunk = addresses[i : i + 30]
         try:
-            r = httpx.get(
+            r = net.get(
                 f"{DEXSCREENER_TOKENS}/{slug}/{','.join(chunk)}", headers=_HEADERS, timeout=20
             )
-            r.raise_for_status()
+            if r.status_code != 200:
+                log.warning("dexscreener tokens: HTTP %s", r.status_code)
+                continue
             pairs = r.json()
-        except (httpx.HTTPError, ValueError):
+        except (net.HttpError, ValueError) as e:
+            log.warning("dexscreener tokens: %s", e)
             continue
         if not isinstance(pairs, list):
             continue
@@ -283,14 +286,17 @@ class FlowCache:
             for i in range(0, len(missing), 30):
                 chunk = missing[i : i + 30]
                 try:
-                    r = httpx.get(
+                    r = net.get(
                         f"{DEXSCREENER_PAIRS}/{slug}/{','.join(chunk)}",
                         headers=_HEADERS,
                         timeout=20,
                     )
-                    r.raise_for_status()
+                    if r.status_code != 200:
+                        log.warning("dexscreener pairs: HTTP %s", r.status_code)
+                        continue
                     pairs = (r.json() or {}).get("pairs") or []
-                except (httpx.HTTPError, ValueError):
+                except (net.HttpError, ValueError) as e:
+                    log.warning("dexscreener pairs: %s", e)
                     continue
                 for pr in pairs:
                     addr = (pr.get("pairAddress") or "").lower()

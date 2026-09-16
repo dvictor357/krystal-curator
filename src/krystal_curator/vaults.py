@@ -8,8 +8,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-import httpx
-
+from . import net
 from .api import _HEADERS, KrystalError
 from .models import fnum
 from .positions import Position
@@ -55,11 +54,12 @@ class Vault:
 
 def _get(url: str, params: dict | None = None) -> dict | list:
     try:
-        r = httpx.get(url, params=params, headers=_HEADERS, timeout=30)
-        r.raise_for_status()
+        r = net.get(url, params=params, headers=_HEADERS, timeout=30)
+        if r.status_code != 200:
+            raise net.status_error(r, "vaults")
         return r.json()
-    except (httpx.HTTPError, ValueError) as e:
-        raise KrystalError(f"vaults: {e}") from e
+    except (net.HttpError, ValueError) as e:
+        raise KrystalError(f"vaults: {e}") from None
 
 
 def _parse_vault(d: dict, *, owned: bool) -> Vault:

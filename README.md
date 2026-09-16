@@ -72,6 +72,14 @@ of *observed active liquidity*. The delta is a prompt to look, not a verdict. Wi
 yield takes a 0.75× haircut instead of the `min(24h, 7d)` rule, and SPIKE/FADING are not
 claimed. A failed window is retried after 10 minutes.
 
+## Reliability
+
+Every outbound call goes through one helper (`net.py`): transport errors and 408/425/429/5xx
+are retried with exponential backoff and jitter, honouring `Retry-After`; a POST is retried
+only when it provably never reached the server, so an alert is never sent twice. When a call
+still fails, the text that reaches the log, the TUI or a Telegram reply has the bot token and
+Cloud key scrubbed — Telegram puts the token in the URL, and httpx puts the URL in its errors.
+
 ## Deployment
 
 The daemon is the thing to deploy; the TUI is a client over the same sqlite db.

@@ -21,6 +21,7 @@ from typing import Any
 
 import httpx
 
+from . import net
 from .models import ROBINHOOD, Pool
 
 log = logging.getLogger("krystal.rhpools")
@@ -35,6 +36,12 @@ class RhpoolsError(RuntimeError):
     pass
 
 
+class WindowUnavailable(Exception):
+    def __init__(self, status: int) -> None:
+        super().__init__(status)
+        self.status = status
+
+
 # A window that answered 502/503/504 is skipped for this long before being retried:
 # the public instance takes ~15 s to time out on 7d / 30d and a TUI refresh should
 # not pay that on every tick.
@@ -46,8 +53,21 @@ def _get_page(
     client: httpx.Client, base: str, window: str, offset: int, limit: int
 ) -> dict[str, Any]:
     params = {"window": window, "limit": limit, "offset": offset, "sort": "fees", "order": "desc"}
-    r = client.get(f"{base}/api/lp/pools", params=params, headers=_HEADERS)
-    r.raise_for_status()
+    # 502/503/504 here mean "this window's aggregation timed out" and take ~15 s each:
+    # handled by the caller with a cooldown, never retried blindly. Transport errors are.
+    r = net.get(
+        f"{base}/api/lp/pools",
+        params=params,
+        headers=_HEADERS,
+        client=client,
+        retry_statuses=(429,),
+    )
+    if r.status_code != 200:
+        raise (
+            WindowUnavailable(r.status_code)
+            if r.status_code in (502, 503, 504)
+            else net.status_error(r, f"{window} offset={offset}")
+        )
     data = r.json()
     if not isinstance(data, dict) or not isinstance(data.get("rows"), list):
         raise RhpoolsError(f"{window} offset={offset}: unexpected payload")
@@ -68,14 +88,14 @@ def fetch_window(
         limit = min(PAGE, top - offset)
         try:
             page = _get_page(client, base, window, offset, limit)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code in (502, 503, 504) and not rows:
-                log.warning("rhpools %s window unavailable (%s)", window, e.response.status_code)
-                _unavailable_until[key] = time.monotonic() + UNAVAILABLE_COOLDOWN_S
-                return None
-            raise RhpoolsError(f"{window} offset={offset}: {e}") from e
-        except httpx.HTTPError as e:
-            raise RhpoolsError(f"{window} offset={offset}: {e}") from e
+        except WindowUnavailable as e:
+            if rows:
+                raise RhpoolsError(f"{window} offset={offset}: HTTP {e.status}") from None
+            log.warning("rhpools %s window unavailable (%s)", window, e.status)
+            _unavailable_until[key] = time.monotonic() + UNAVAILABLE_COOLDOWN_S
+            return None
+        except (net.HttpError, ValueError) as e:
+            raise RhpoolsError(f"{window} offset={offset}: {e}") from None
         got = page["rows"]
         for row in got:
             pid = str(row.get("id") or "").lower()
