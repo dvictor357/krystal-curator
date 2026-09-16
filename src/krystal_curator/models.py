@@ -22,6 +22,11 @@ CHAIN_SLUG: dict[int, str] = {
 
 ROBINHOOD = 4663
 
+# rhpools protocol names → Krystal protocol names (keeps filters, URLs and the protocol
+# picker working). Ramses CL is factory-compatible with v3 and shows as v3 there.
+RHPOOLS_PROTOCOL = {"v2": "uniswapv2", "v3": "uniswapv3", "v4": "uniswapv4"}
+RHPOOLS_WINDOW_DAYS = {"1h": 1 / 24, "24h": 1.0, "7d": 7.0, "30d": 30.0}
+
 
 def fnum(x: Any, default: float = 0.0) -> float:
     if x in (None, ""):
@@ -85,6 +90,13 @@ class Pool:
     tx24: int | None = None  # only filled when Cloud API key present
     price0_usd: float = 0.0  # tvlToken0 / token0 balance; 0 when the feed lacks either
     price1_usd: float = 0.0
+    price_t0_in_t1: float | None = None  # direct pool price when the source gives it (rhpools)
+    source: str = "krystal"  # which feed produced this row
+    tvl_basis: str = ""  # how the source measured tvl (rhpools); "" = feed's own number
+    risks: list[str] = field(default_factory=list)  # source-reported risk notes (rhpools)
+    # metrics this source could not provide; 0.0 there means "unknown", not "zero".
+    # scoring / filters skip these instead of treating them as safe.
+    unknown: frozenset[str] = frozenset()
 
     # ---- identity -------------------------------------------------------
     @property
@@ -111,6 +123,8 @@ class Pool:
     @property
     def price(self) -> float | None:
         """token0 priced in token1 (what a range / IL is measured on); None if unknown."""
+        if self.price_t0_in_t1 is not None and self.price_t0_in_t1 > 0:
+            return self.price_t0_in_t1
         if self.price0_usd > 0 and self.price1_usd > 0:
             return self.price0_usd / self.price1_usd
         return None
@@ -160,6 +174,8 @@ class Pool:
     @property
     def is_new(self) -> bool:
         """Less than ~1 day of history: 24h and 7d windows are identical."""
+        if "stat7d" in self.unknown:
+            return False
         return self.s7d.volume > 0 and abs(self.s7d.volume - self.s24h.volume) < 1e-6
 
     @property
@@ -241,4 +257,73 @@ class Pool:
             incentives=incentives,
             price0_usd=fnum(t0.get("usdPrice")) or cls._usd_price(t0, item.get("tvlToken0")),
             price1_usd=fnum(t1.get("usdPrice")) or cls._usd_price(t1, item.get("tvlToken1")),
+        )
+
+    @classmethod
+    def from_rhpools(cls, rows: dict[str, dict], *, chain_id: int) -> Pool:
+        """Build a Pool from robinhoodpools `/api/lp/pools` rows, one per window.
+
+        `rows` maps window name ("1h", "24h", "7d", "30d") → that window's row for
+        the same pool id. Windows the service could not serve are simply absent and
+        are recorded in `unknown` as "stat<window>". The 24h row is the identity row;
+        it must be present.
+        """
+        base = rows["24h"]
+        t0 = base.get("token0") or {}
+        t1 = base.get("token1") or {}
+        unknown: set[str] = {"volatility", "drawdown", "lp_auto"}
+        tvl_usd = base.get("tvl_usd")
+        tvl_basis = str(base.get("tvl_basis") or "")
+        if tvl_usd is None:
+            # v4 singleton pools: manager balance is not TVL; the service reports the
+            # value of liquidity observed active instead, when it has one.
+            tvl_usd = base.get("observed_active_tvl_usd")
+            tvl_basis = "observed active liquidity value" if tvl_usd is not None else ""
+        if tvl_usd is None:
+            unknown.add("tvl")
+        tvl = fnum(tvl_usd)
+
+        def stat(window: str) -> Stat:
+            row = rows.get(window)
+            if row is None:
+                unknown.add(f"stat{window}")
+                return Stat()
+            fee = fnum(row.get("fees_usd"))
+            days = RHPOOLS_WINDOW_DAYS[window]
+            apr = fee / days * 365 / tvl * 100 if tvl > 0 else 0.0
+            return Stat(volume=fnum(row.get("volume_usd")), fee=fee, apr=apr)
+
+        s1h, s24h, s7d, s30d = (stat(w) for w in ("1h", "24h", "7d", "30d"))
+        fee_ppm = base.get("fee_ppm")
+        swaps = base.get("swaps")
+        price = base.get("price")
+        created = base.get("created_at")
+        return cls(
+            chain_id=chain_id,
+            protocol=RHPOOLS_PROTOCOL.get(
+                str(base.get("protocol") or ""), str(base.get("protocol") or "")
+            ),
+            address=str(base.get("id") or "").lower(),
+            token0=t0.get("symbol") or "?",
+            token1=t1.get("symbol") or "?",
+            token0_addr=(t0.get("address") or "").lower(),
+            token1_addr=(t1.get("address") or "").lower(),
+            fee_tier_pct=fnum(fee_ppm) / 10_000 if fee_ppm is not None else 0.0,
+            tvl=tvl,
+            s1h=s1h,
+            s24h=s24h,
+            s7d=s7d,
+            s30d=s30d,
+            drawdown24h=0.0,
+            volatility=0.0,
+            lp_auto=False,
+            dynamic_fee=fee_ppm is None,
+            tag="",
+            tx24=int(swaps) if isinstance(swaps, int | float) else None,
+            price_t0_in_t1=float(price) if isinstance(price, int | float) and price > 0 else None,
+            first_seen_ts=int(created) if isinstance(created, int | float) else 0,
+            source="rhpools",
+            tvl_basis=tvl_basis,
+            risks=[str(r) for r in base.get("risks") or []],
+            unknown=frozenset(unknown),
         )

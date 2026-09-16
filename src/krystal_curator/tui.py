@@ -1077,7 +1077,7 @@ class CuratorApp(App[None]):
     @work(thread=True, exclusive=True, group="fetch")
     def _fetch(self) -> None:
         try:
-            pools = api.fetch_pools(self.chain_id)
+            pools = api.fetch_pools(self.chain_id, **self.config.fetch_kwargs)
         except api.KrystalError as e:
             self.call_from_thread(self._set_status, f"ERROR {e}")
             return

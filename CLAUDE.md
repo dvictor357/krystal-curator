@@ -10,12 +10,13 @@ Python 3.13, `uv`, Textual TUI. Owner is an LP / vault manager; numbers drive re
   Never commit `.env`, `exports/`, `reports/`.
 
 ## Layout (`src/krystal_curator/`)
-- `api.py` public LP-explorer feed (free) + Cloud API helpers (paid units) · `enrich.py` DexScreener logos/socials · `vaults.py` vault + strategy positions (free public API) · `positions.py` Position model + Cloud `/v1/positions`
+- `api.py` `fetch_pools(source=…)` dispatch + Krystal LP-explorer feed (free) + Cloud API helpers (paid units) · `rhpools.py` robinhoodpools chain-indexed feed (`/api/lp/pools`, one request per window, 503 windows → `Pool.unknown`, 10-min cooldown) · `enrich.py` DexScreener logos/socials · `vaults.py` vault + strategy positions (free public API) · `positions.py` Position model + Cloud `/v1/positions`
 - `models.py` Pool + derived metrics · `profiles.py` risk profiles · `scoring.py` filters/score/grade/flags · `position.py` size simulator (dilution, σ²/8 IL) · `advisor.py` range-edge math · `rotation.py` opportunity cost · `analytics.py` track record / report
 - `store.py` sqlite (pool + vault snapshots, watchlist) · `monitor.py` alert rules shared by TUI and daemon · `daemon.py` `watch` loop · `notify.py` Telegram · `bot.py` Telegram commands · `autoconfig.py` Krystal Automation form values · `backtest.py`
 - `tui.py` + `tui.tcss` all screens (CuratorApp, PositionsScreen, TrackScreen, modals) · `cli.py` argparse entry
 
 ## Conventions
+- `Pool.unknown` names metrics a feed did not provide (`volatility`, `drawdown`, `lp_auto`, `tvl`, `stat1h/7d/30d`); 0.0 there means unknown, never zero. Filters skip unknown metrics, scores treat them as neutral (0.5), flags that need them are not emitted. Any new rule reading those fields must check `unknown` first.
 - Pure logic lives outside `tui.py` with unit tests; TUI tests run on `tests/fixtures/top_pools_robinhood.json` with network patched out (`tests/test_tui.py`).
 - Cloud API calls only on explicit user action (never on timers); count units in `units_used`.
 - Widgets are looked up on the base screen (`self.main`) because modals sit on top; never name a method `_render`, `_closed`, `_open`, `size` on Textual subclasses (clashes with internals).

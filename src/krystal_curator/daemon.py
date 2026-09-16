@@ -93,7 +93,7 @@ def run_watch(
     while not stop:
         t0 = time.time()
         try:
-            pools = api.fetch_pools(chain_id)
+            pools = api.fetch_pools(chain_id, **cfg.fetch_kwargs)
         except api.KrystalError as e:
             log.error("pools: %s", e)
             pools = None

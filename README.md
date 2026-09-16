@@ -43,6 +43,23 @@ average, red = <0.3×. The detail FLOW row adds 5m/6h counts, average trade size
 
 The detail panel shows both token logos and clickable social links. Logo renderer: `--images auto|tgp|sixel|halfcell|unicode|off` or `KRYSTAL_IMAGE=…`. `auto` uses Kitty/Sixel graphics (Ghostty, Kitty, WezTerm, iTerm2); Warp is detected and gets coloured half-blocks since it does not render graphics escapes.
 
+## Pool feeds
+
+`pool_source = "krystal"` (default) reads Krystal's public LP-explorer feed on any chain.
+`pool_source = "rhpools"` (or `--source rhpools`, `KRYSTAL_SOURCE=rhpools`) reads
+[robinhoodpools](https://github.com/wock9000/robinhoodpools), an open-source indexer that
+derives volume, fees, TVL and swap counts straight from Robinhood-chain events, USDG-quoted.
+Public instance `https://rhpools.lol`; point `rhpools_url` at `http://127.0.0.1:8196` for a
+local `rhpools` service. Robinhood (4663) only.
+
+What changes with `rhpools`: swap counts (`TX24`) come free (no Cloud key); TVL for v4 pools is
+the value of *observed active liquidity* (`tvl_basis`), not manager balance; volatility,
+drawdown and LP-auto support are **unknown** — filters skip them, the risk grade assumes
+mid-band, and rows carry `σ?`. Windows the service cannot serve (the public instance answers
+503 for 7d / 30d when aggregation times out) are dropped, not zero-filled: rows show `7D?`,
+yield takes a 0.75× haircut instead of the `min(24h, 7d)` rule, and SPIKE/FADING are not
+claimed. A failed window is retried after 10 minutes.
+
 ## Deployment
 
 The daemon is the thing to deploy; the TUI is a client over the same sqlite db.

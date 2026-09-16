@@ -26,7 +26,39 @@ class KrystalError(RuntimeError):
     pass
 
 
-def fetch_pools(chain_id: int, *, limit: int = 5000, timeout: float = 30.0) -> list[Pool]:
+SOURCES = ("krystal", "rhpools")
+
+
+def fetch_pools(
+    chain_id: int,
+    *,
+    source: str = "krystal",
+    rhpools_url: str | None = None,
+    rhpools_top: int = 300,
+    limit: int = 5000,
+    timeout: float = 30.0,
+) -> list[Pool]:
+    """Pools on `chain_id` from the configured feed.
+
+    `krystal`: the public LP-explorer feed (every chain Krystal lists).
+    `rhpools`: robinhoodpools' chain-indexed feed (Robinhood only, no σ / drawdown).
+    Both raise KrystalError so callers keep one except clause.
+    """
+    if source == "rhpools":
+        from . import rhpools
+
+        try:
+            return rhpools.fetch_pools(
+                chain_id, base=rhpools_url or rhpools.DEFAULT_URL, top=rhpools_top, timeout=timeout
+            )
+        except rhpools.RhpoolsError as e:
+            raise KrystalError(str(e)) from e
+    if source != "krystal":
+        raise KrystalError(f"unknown pool source {source!r}; use one of {', '.join(SOURCES)}")
+    return fetch_krystal_pools(chain_id, limit=limit, timeout=timeout)
+
+
+def fetch_krystal_pools(chain_id: int, *, limit: int = 5000, timeout: float = 30.0) -> list[Pool]:
     """All pools Krystal tracks on `chain_id` (server-side filtered)."""
     params: dict[str, Any] = {
         "skipCheckAutomation": "true",

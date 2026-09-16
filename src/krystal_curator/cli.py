@@ -26,6 +26,19 @@ def _common(ap: argparse.ArgumentParser, cfg: Config) -> None:
     """Shared flags; defaults come from config.toml / env so flags only override."""
     ap.add_argument("--chain", type=int, default=cfg.chain, help=f"chainId (default {cfg.chain})")
     ap.add_argument(
+        "--source",
+        choices=api.SOURCES,
+        default=cfg.pool_source,
+        help=f"pool feed: krystal (any chain) or rhpools (chain-indexed, Robinhood only) "
+        f"(default {cfg.pool_source})",
+    )
+    ap.add_argument(
+        "--rhpools-url",
+        default=cfg.rhpools_url,
+        help=f"robinhoodpools base URL for --source rhpools (default {cfg.rhpools_url})",
+    )
+    ap.set_defaults(rhpools_top=cfg.rhpools_top)
+    ap.add_argument(
         "--profile",
         choices=PROFILE_ORDER,
         default=cfg.profile,
@@ -133,6 +146,15 @@ def build_parser(cfg: Config) -> argparse.ArgumentParser:
     return ap
 
 
+def _pool_kwargs(args: argparse.Namespace) -> dict:
+    """Feed selection for api.fetch_pools from the shared flags."""
+    return {
+        "source": args.source,
+        "rhpools_url": args.rhpools_url,
+        "rhpools_top": args.rhpools_top,
+    }
+
+
 def run_setup(args: argparse.Namespace) -> int:
     from .autoconfig import recommend
     from .monitor import Monitor
@@ -145,7 +167,7 @@ def run_setup(args: argparse.Namespace) -> int:
         con.print(f"[red]need a wallet: --wallet or {api.WALLET_ENV}[/red]")
         return 2
     try:
-        pools = api.fetch_pools(args.chain)
+        pools = api.fetch_pools(args.chain, **_pool_kwargs(args))
         vaults = fetch_vaults(wallet, chain_id=args.chain)
     except api.KrystalError as e:
         con.print(f"[red]{e}[/red]")
@@ -386,7 +408,7 @@ def run_backtest(args: argparse.Namespace) -> int:
 
         try:
             vaults = fetch_vaults(wallet, chain_id=args.chain)
-            pools = api.fetch_pools(args.chain)
+            pools = api.fetch_pools(args.chain, **_pool_kwargs(args))
         except api.KrystalError as e:
             con.print(f"[red]{e}[/red]")
             return 0
@@ -417,7 +439,7 @@ def run_scan(args: argparse.Namespace) -> int:
     quote = None if args.quote.lower() == "any" else args.quote
     protos = set(args.protocol) or None
     try:
-        pools = api.fetch_pools(args.chain)
+        pools = api.fetch_pools(args.chain, **_pool_kwargs(args))
     except api.KrystalError as e:
         con.print(f"[red]{e}[/red]")
         return 2
@@ -545,6 +567,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if getattr(args, "protocol", None) is None and hasattr(args, "protocol"):
         args.protocol = list(cfg.protocols)
+    if hasattr(args, "source"):  # flags win over config for the TUI / daemon too
+        cfg.pool_source = args.source
+        cfg.rhpools_url = args.rhpools_url
     if args.cmd == "init":
         return run_init(args)
     if args.cmd == "setup":

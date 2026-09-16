@@ -41,6 +41,9 @@ class Alerts:
 @dataclass(slots=True)
 class Config:
     chain: int = ROBINHOOD
+    pool_source: str = "krystal"  # krystal | rhpools (chain-indexed, Robinhood only)
+    rhpools_url: str = "https://rhpools.lol"  # or a local `rhpools --port 8196`
+    rhpools_top: int = 300  # pools per window pulled from rhpools (150 per request)
     quote: str = "USDG"  # "any" disables
     profile: str = "balanced"
     protocols: list[str] = field(default_factory=list)
@@ -60,6 +63,15 @@ class Config:
     def quote_or_none(self) -> str | None:
         return None if self.quote.lower() in ("", "any") else self.quote
 
+    @property
+    def fetch_kwargs(self) -> dict[str, Any]:
+        """Keyword arguments for `api.fetch_pools` selecting the configured feed."""
+        return {
+            "source": self.pool_source,
+            "rhpools_url": self.rhpools_url,
+            "rhpools_top": self.rhpools_top,
+        }
+
 
 def find_path(explicit: str | Path | None = None) -> Path | None:
     candidates = [
@@ -76,6 +88,8 @@ def find_path(explicit: str | Path | None = None) -> Path | None:
 
 _ENV_MAP = {  # env var → config field (secrets excluded on purpose)
     "KRYSTAL_CHAIN": "chain",
+    "KRYSTAL_SOURCE": "pool_source",
+    "KRYSTAL_RHPOOLS_URL": "rhpools_url",
     "KRYSTAL_QUOTE": "quote",
     "KRYSTAL_PROFILE": "profile",
     "KRYSTAL_SIZE": "size",
@@ -128,6 +142,9 @@ TEMPLATE = """# krystal-curator configuration. Precedence: CLI flag > env var > 
 # Secrets (KRYSTAL_CLOUD_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) go in .env, not here.
 
 chain = 4663            # Robinhood. 8453 base, 1 ethereum, 56 bsc, 42161 arbitrum
+pool_source = "krystal" # krystal (any chain) | rhpools (chain-indexed, Robinhood only)
+# rhpools_url = "https://rhpools.lol"   # or http://127.0.0.1:8196 for a local indexer
+# rhpools_top = 300       # pools per window taken from rhpools
 quote = "USDG"          # only pools containing this token; "any" to disable
 profile = "balanced"    # conservative | balanced | aggressive | degen
 protocols = []          # e.g. ["uniswapv4", "ramsescl"]; empty = all
