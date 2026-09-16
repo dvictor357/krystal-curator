@@ -69,10 +69,13 @@ from the one you are looking at (`+50%` = other feed sees 50 % more; `v`/`f` suf
 only volume or fees were comparable; `-` = not listed there). Green < 5 %, yellow < 15 %,
 red beyond; sortable, and the detail panel shows all three deltas. Ramses CL pools have no
 chain-side twin. Expect big TVL gaps on v4: Krystal reports pool value, rhpools the value
-of *observed active liquidity*. The delta is a prompt to look, not a verdict. Windows the service cannot serve (the public instance answers
-503 for 7d / 30d when aggregation times out) are dropped, not zero-filled: rows show `7D?`,
-yield takes a 0.75× haircut instead of the `min(24h, 7d)` rule, and SPIKE/FADING are not
-claimed. A failed window is retried after 10 minutes.
+of *observed active liquidity*. The delta is a prompt to look, not a verdict. Against the public instance the tool is a polite guest:
+it asks for 1h and 24h only (7d / 30d time out there), one page of 150 pools each, one
+request at a time, and leaves a window that answered 5xx alone for an hour. Against a
+local `rhpools` (loopback URL) it asks for all four windows in parallel and retries after
+10 minutes; `rhpools_windows` / `KRYSTAL_RHPOOLS_WINDOWS` overrides either default.
+Windows not served are marked unknown, not zero-filled: rows show `7D?`, yield takes a
+0.75× haircut instead of the `min(24h, 7d)` rule, and SPIKE/FADING are not claimed.
 
 ## Reliability
 

@@ -37,7 +37,7 @@ def _common(ap: argparse.ArgumentParser, cfg: Config) -> None:
         default=cfg.rhpools_url,
         help=f"robinhoodpools base URL for --source rhpools (default {cfg.rhpools_url})",
     )
-    ap.set_defaults(rhpools_top=cfg.rhpools_top)
+    ap.set_defaults(rhpools_top=cfg.rhpools_top, rhpools_windows=list(cfg.rhpools_windows))
     ap.add_argument(
         "--reconcile",
         action=argparse.BooleanOptionalAction,
@@ -167,6 +167,7 @@ def _pool_kwargs(args: argparse.Namespace) -> dict:
         "source": args.source,
         "rhpools_url": args.rhpools_url,
         "rhpools_top": args.rhpools_top,
+        "rhpools_windows": args.rhpools_windows,
     }
 
 

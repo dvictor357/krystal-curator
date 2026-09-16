@@ -126,7 +126,7 @@ def test_from_rhpools_dynamic_fee_when_ppm_missing():
 def test_fetch_pools_drops_503_windows_and_marks_unknown(recorded, client_factory):
     t = _transport(recorded)
     client_factory(t)
-    pools = rhpools.fetch_pools(4663, base="http://rh.test/", top=12)
+    pools = rhpools.fetch_pools(4663, base="http://rh.test/", top=12, windows=rhpools.WINDOWS)
     assert len(pools) == len(recorded["24h"]["rows"])
     assert {c["window"] for c in t.calls} == {"1h", "24h", "7d", "30d"}
     assert all("stat7d" in p.unknown and "stat30d" in p.unknown for p in pools)
@@ -154,15 +154,67 @@ def test_fetch_pools_pages_until_top_or_short_page(recorded, client_factory, mon
 def test_failed_window_is_not_retried_during_cooldown(recorded, client_factory, monkeypatch):
     t = _transport(recorded)
     client_factory(t)
-    rhpools.fetch_pools(4663, base="http://rh.test", top=12)
+    kw = {"base": "http://rh.test", "top": 12, "windows": rhpools.WINDOWS}
+    rhpools.fetch_pools(4663, **kw)
     first = len([c for c in t.calls if c["window"] in ("7d", "30d")])
     assert first == 2
-    rhpools.fetch_pools(4663, base="http://rh.test", top=12)
+    rhpools.fetch_pools(4663, **kw)
     assert len([c for c in t.calls if c["window"] in ("7d", "30d")]) == first  # skipped
-    clock = time.monotonic() + rhpools.UNAVAILABLE_COOLDOWN_S + 1
+    # public host: an hour, not ten minutes — each retry costs the operator ~15 s
+    clock = time.monotonic() + rhpools.LOCAL_UNAVAILABLE_COOLDOWN_S + 1
     monkeypatch.setattr(rhpools.time, "monotonic", lambda: clock)
-    rhpools.fetch_pools(4663, base="http://rh.test", top=12)
+    rhpools.fetch_pools(4663, **kw)
+    assert len([c for c in t.calls if c["window"] in ("7d", "30d")]) == first  # still skipped
+    clock = time.monotonic() + rhpools.UNAVAILABLE_COOLDOWN_S + 1
+    rhpools.fetch_pools(4663, **kw)
     assert len([c for c in t.calls if c["window"] in ("7d", "30d")]) == first + 2  # retried
+
+
+# ---- politeness on the shared instance -----------------------------------
+
+
+def test_public_host_asks_for_short_windows_only_one_page_sequentially(recorded, client_factory):
+    t = _transport(recorded)
+    client_factory(t)
+    pools = rhpools.fetch_pools(4663, base="https://rhpools.lol")
+    assert {c["window"] for c in t.calls} == {"1h", "24h"}  # never 7d / 30d
+    assert all(int(c["limit"]) <= rhpools.PAGE and c["offset"] == "0" for c in t.calls)
+    assert len(t.calls) == 2  # one page each
+    assert pools and all({"stat7d", "stat30d"} <= p.unknown for p in pools)
+    assert not rhpools.is_local("https://rhpools.lol") and not rhpools.is_local(
+        "http://10.0.0.5:8196"
+    )
+
+
+def test_local_host_asks_for_every_window(recorded, client_factory):
+    t = _transport(recorded)
+    client_factory(t)
+    rhpools.fetch_pools(4663, base="http://127.0.0.1:8196", top=12)
+    assert {c["window"] for c in t.calls} == set(rhpools.WINDOWS)
+    for base in ("http://localhost:8196", "http://127.0.0.1:8196/", "http://[::1]:8196"):
+        assert rhpools.is_local(base), base
+
+
+def test_explicit_windows_override_and_always_include_24h(recorded, client_factory):
+    t = _transport(recorded)
+    client_factory(t)
+    rhpools.fetch_pools(4663, base="https://rhpools.lol", windows=["1h"])
+    assert {c["window"] for c in t.calls} == {"1h", "24h"}
+    t2 = _transport(recorded)
+    client_factory(t2)
+    rhpools.fetch_pools(4663, base="https://rhpools.lol", windows=["7d", "30d", "24h"])
+    assert {c["window"] for c in t2.calls} == {"24h", "7d", "30d"}
+
+
+def test_local_cooldown_is_shorter(recorded, client_factory, monkeypatch):
+    t = _transport(recorded)
+    client_factory(t)
+    rhpools.fetch_pools(4663, base="http://127.0.0.1:8196", top=12)
+    n = len([c for c in t.calls if c["window"] == "7d"])
+    clock = time.monotonic() + rhpools.LOCAL_UNAVAILABLE_COOLDOWN_S + 1
+    monkeypatch.setattr(rhpools.time, "monotonic", lambda: clock)
+    rhpools.fetch_pools(4663, base="http://127.0.0.1:8196", top=12)
+    assert len([c for c in t.calls if c["window"] == "7d"]) == n + 1
 
 
 def test_fetch_pools_fails_without_24h(recorded, client_factory):
@@ -208,11 +260,13 @@ def test_config_source_env_and_kwargs(monkeypatch, tmp_path):
     monkeypatch.delenv(config.CONFIG_ENV, raising=False)
     monkeypatch.setenv("KRYSTAL_SOURCE", "rhpools")
     monkeypatch.setenv("KRYSTAL_RHPOOLS_URL", "http://127.0.0.1:8196")
+    monkeypatch.setenv("KRYSTAL_RHPOOLS_WINDOWS", "1h,24h,7d")
     cfg = config.load()
     assert cfg.fetch_kwargs == {
         "source": "rhpools",
         "rhpools_url": "http://127.0.0.1:8196",
-        "rhpools_top": 300,
+        "rhpools_top": 150,
+        "rhpools_windows": ["1h", "24h", "7d"],
     }
 
 

@@ -33,7 +33,8 @@ def fetch_pools(
     *,
     source: str = "krystal",
     rhpools_url: str | None = None,
-    rhpools_top: int = 300,
+    rhpools_top: int | None = None,
+    rhpools_windows: list[str] | None = None,
     limit: int = 5000,
     timeout: float = 30.0,
 ) -> list[Pool]:
@@ -48,7 +49,11 @@ def fetch_pools(
 
         try:
             return rhpools.fetch_pools(
-                chain_id, base=rhpools_url or rhpools.DEFAULT_URL, top=rhpools_top, timeout=timeout
+                chain_id,
+                base=rhpools_url or rhpools.DEFAULT_URL,
+                top=rhpools_top or rhpools.DEFAULT_TOP,
+                windows=rhpools_windows or None,
+                timeout=timeout,
             )
         except rhpools.RhpoolsError as e:
             raise KrystalError(str(e)) from e

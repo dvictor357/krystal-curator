@@ -43,7 +43,9 @@ class Config:
     chain: int = ROBINHOOD
     pool_source: str = "krystal"  # krystal | rhpools (chain-indexed, Robinhood only)
     rhpools_url: str = "https://rhpools.lol"  # or a local `rhpools --port 8196`
-    rhpools_top: int = 300  # pools per window pulled from rhpools (150 per request)
+    rhpools_top: int = 150  # pools per window pulled from rhpools (150 = one request)
+    # windows to request; empty = 1h+24h on a public host, all four on a local rhpools
+    rhpools_windows: list[str] = field(default_factory=list)
     reconcile: bool = False  # also fetch the other feed and show SRCΔ (Robinhood only)
     quote: str = "USDG"  # "any" disables
     profile: str = "balanced"
@@ -71,6 +73,7 @@ class Config:
             "source": self.pool_source,
             "rhpools_url": self.rhpools_url,
             "rhpools_top": self.rhpools_top,
+            "rhpools_windows": list(self.rhpools_windows),
         }
 
 
@@ -91,6 +94,7 @@ _ENV_MAP = {  # env var → config field (secrets excluded on purpose)
     "KRYSTAL_CHAIN": "chain",
     "KRYSTAL_SOURCE": "pool_source",
     "KRYSTAL_RHPOOLS_URL": "rhpools_url",
+    "KRYSTAL_RHPOOLS_WINDOWS": "rhpools_windows",
     "KRYSTAL_RECONCILE": "reconcile",
     "KRYSTAL_QUOTE": "quote",
     "KRYSTAL_PROFILE": "profile",
@@ -146,7 +150,8 @@ TEMPLATE = """# krystal-curator configuration. Precedence: CLI flag > env var > 
 chain = 4663            # Robinhood. 8453 base, 1 ethereum, 56 bsc, 42161 arbitrum
 pool_source = "krystal" # krystal (any chain) | rhpools (chain-indexed, Robinhood only)
 # rhpools_url = "https://rhpools.lol"   # or http://127.0.0.1:8196 for a local indexer
-# rhpools_top = 300       # pools per window taken from rhpools
+# rhpools_top = 150       # pools per window taken from rhpools (150 = one request each)
+# rhpools_windows = []    # [] = 1h+24h on the public instance, all four on a local one
 reconcile = false       # also fetch the other feed and show SRCΔ (Krystal vs chain), Robinhood only
 quote = "USDG"          # only pools containing this token; "any" to disable
 profile = "balanced"    # conservative | balanced | aggressive | degen
