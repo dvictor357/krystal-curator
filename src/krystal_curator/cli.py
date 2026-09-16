@@ -39,6 +39,13 @@ def _common(ap: argparse.ArgumentParser, cfg: Config) -> None:
     )
     ap.set_defaults(rhpools_top=cfg.rhpools_top)
     ap.add_argument(
+        "--reconcile",
+        action=argparse.BooleanOptionalAction,
+        default=cfg.reconcile,
+        help="also fetch the other feed and show SRCΔ, its TVL/volume disagreement "
+        f"(Robinhood only; default {cfg.reconcile})",
+    )
+    ap.add_argument(
         "--profile",
         choices=PROFILE_ORDER,
         default=cfg.profile,
@@ -144,6 +151,14 @@ def build_parser(cfg: Config) -> argparse.ArgumentParser:
     sub.add_parser("config", help="show the effective configuration and where it came from")
     sub.add_parser("status", help="daemon heartbeat, db size, last alerts")
     return ap
+
+
+def _recon_cell(r) -> str:
+    """SRCΔ for the scan table: TVL delta vs the other feed, coloured by severity."""
+    if r is None:
+        return "[dim]-[/dim]"
+    color = {"warn": "red", "note": "yellow", "ok": "green"}.get(r.level, "dim")
+    return f"[{color}]{r.headline}[/{color}]"
 
 
 def _pool_kwargs(args: argparse.Namespace) -> dict:
@@ -447,7 +462,21 @@ def run_scan(args: argparse.Namespace) -> int:
     from .store import Store
 
     fill_realised_risk(pools, Store())  # σ / drawdown from TUI / daemon history, if any
-    rows = curate(pools, prof, quote=quote, protocols=protos)[: args.top]
+    recon = None
+    if args.reconcile:
+        from .reconcile import reconcile
+
+        try:
+            other = api.fetch_reference_pools(args.chain, **_pool_kwargs(args))
+        except api.KrystalError as e:
+            con.print(f"[yellow]reconcile skipped: {e}[/yellow]")
+            other = None
+        if other is None:
+            con.print("[yellow]reconcile: no second feed for this chain[/yellow]")
+        else:
+            recon = reconcile(pools, other)
+            con.print(f"[dim]{recon.summary()}[/dim]")
+    rows = curate(pools, prof, quote=quote, protocols=protos, recon=recon)[: args.top]
     from .enrich import FlowCache
 
     flows = FlowCache().fetch(args.chain, [s.pool.address for s in rows]) if rows else {}
@@ -492,6 +521,7 @@ def run_scan(args: argparse.Namespace) -> int:
         "TX24",
         "σ%",
         "DD24",
+        *(("SRCΔ",) if recon else ()),
         "MY$/D",
         "NET$/D",
         "SHARE",
@@ -520,6 +550,7 @@ def run_scan(args: argparse.Namespace) -> int:
             f"{s.flow.tx_h24:,}" if s.flow and s.flow.tx_h24 else "-",
             f"{p.volatility:.1f}",
             f"{p.drawdown24h:.1f}",
+            *((_recon_cell(s.recon),) if recon else ()),
             f"{s.sim.fee_day:,.0f}",
             f"{s.sim.net_day:+,.0f}",
             f"{s.sim.share * 100:.1f}%",
@@ -574,6 +605,7 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(args, "source"):  # flags win over config for the TUI / daemon too
         cfg.pool_source = args.source
         cfg.rhpools_url = args.rhpools_url
+        cfg.reconcile = args.reconcile
     if args.cmd == "init":
         return run_init(args)
     if args.cmd == "setup":

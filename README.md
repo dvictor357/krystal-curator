@@ -59,7 +59,15 @@ mid-band, and rows carry `σ?`. Every refresh records the pool price, so once th
 daemon has ≥12 h of history for a pool the blanks fill in from it: `σ` becomes realised
 daily volatility over the last 7 days (same estimator as `backtest --sigma`), `dd24` the
 worst peak-to-trough move in the last 24 h (needs ≥6 h), and the row shows `σ~` instead.
-`scan` uses the same history if the daemon has been running. Windows the service cannot serve (the public instance answers
+`scan` uses the same history if the daemon has been running.
+
+**Reconcile.** `reconcile = true` (or `--reconcile`, `KRYSTAL_RECONCILE=1`) also fetches the
+*other* feed on every refresh and adds an `SRCΔ` column: how far the other feed's TVL is
+from the one you are looking at (`+50%` = other feed sees 50 % more; `v`/`f` suffix when
+only volume or fees were comparable; `-` = not listed there). Green < 5 %, yellow < 15 %,
+red beyond; sortable, and the detail panel shows all three deltas. Ramses CL pools have no
+chain-side twin. Expect big TVL gaps on v4: Krystal reports pool value, rhpools the value
+of *observed active liquidity*. The delta is a prompt to look, not a verdict. Windows the service cannot serve (the public instance answers
 503 for 7d / 30d when aggregation times out) are dropped, not zero-filled: rows show `7D?`,
 yield takes a 0.75× haircut instead of the `min(24h, 7d)` rule, and SPIKE/FADING are not
 claimed. A failed window is retried after 10 minutes.

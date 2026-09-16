@@ -5,6 +5,7 @@ chain = 4663            # Robinhood. 8453 base, 1 ethereum, 56 bsc, 42161 arbitr
 pool_source = "krystal" # krystal (any chain) | rhpools (chain-indexed, Robinhood only)
 # rhpools_url = "https://rhpools.lol"   # or http://127.0.0.1:8196 for a local indexer
 # rhpools_top = 300       # pools per window taken from rhpools
+reconcile = false       # also fetch the other feed and show SRCΔ (Krystal vs chain), Robinhood only
 quote = "USDG"          # only pools containing this token; "any" to disable
 profile = "balanced"    # conservative | balanced | aggressive | degen
 protocols = []          # e.g. ["uniswapv4", "ramsescl"]; empty = all

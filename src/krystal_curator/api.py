@@ -58,6 +58,27 @@ def fetch_pools(
     return fetch_krystal_pools(chain_id, limit=limit, timeout=timeout)
 
 
+def reference_source(chain_id: int, source: str) -> str | None:
+    """The other feed to reconcile against, or None when there is none for this chain."""
+    from .models import ROBINHOOD
+
+    if source == "rhpools":
+        return "krystal"
+    if source == "krystal" and chain_id == ROBINHOOD:
+        return "rhpools"
+    return None
+
+
+def fetch_reference_pools(
+    chain_id: int, *, source: str = "krystal", **kw: Any
+) -> list[Pool] | None:
+    """Pools from the *other* feed for cross-checking; None if no other feed covers the chain."""
+    other = reference_source(chain_id, source)
+    if other is None:
+        return None
+    return fetch_pools(chain_id, source=other, **kw)
+
+
 def fetch_krystal_pools(chain_id: int, *, limit: int = 5000, timeout: float = 30.0) -> list[Pool]:
     """All pools Krystal tracks on `chain_id` (server-side filtered)."""
     params: dict[str, Any] = {

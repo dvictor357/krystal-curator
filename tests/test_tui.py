@@ -220,3 +220,35 @@ async def test_positions_screen_renders_detail(app, monkeypatch):
         await pilot.press("x")
         await pilot.pause(0.3)
         assert type(app.screen).__name__ in ("RotationModal", "PositionsScreen")
+
+
+@pytest.mark.asyncio
+async def test_reconcile_column_and_status(app, monkeypatch):
+    from textual.widgets import DataTable
+
+    from krystal_curator.models import Stat
+
+    rows = json.loads(FIXTURE.read_text())["result"]
+    pools = [Pool.from_public(x) for x in rows]
+    other = []
+    for p in pools[:10]:
+        o = Pool.from_public({})
+        o.address, o.protocol, o.source = p.address, p.protocol, "rhpools"
+        o.tvl = p.tvl * 1.5  # 50 % apart on every matched pool
+        o.s24h = Stat(volume=p.s24h.volume, fee=p.s24h.fee)
+        other.append(o)
+    monkeypatch.setattr(api, "fetch_reference_pools", lambda chain_id, **kw: list(other))
+    app.config.reconcile = True
+    async with app.run_test(size=(240, 50)) as pilot:
+        await _loaded(app, pilot)
+        assert app.recon is not None and app.recon.other == "rhpools"
+        assert app.recon.flagged == len(app.recon.by_address) > 0
+        table = app.main.query_one("#table", DataTable)
+        matched = [r for r in app.rows if r.recon]
+        assert matched
+        cell = table.get_cell(matched[0].pool.address + matched[0].pool.protocol, "SRCΔ")
+        assert str(cell) == "+50%"
+        assert "vs rhpools:" in str(app.main.query_one("#status").render())
+        app._set_sort("SRCΔ")
+        await pilot.pause(0.2)
+        assert app.rows[0].recon is not None  # worst disagreement sorts first

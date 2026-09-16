@@ -9,6 +9,7 @@ from .enrich import Flow
 from .models import Pool
 from .position import Sim
 from .profiles import RiskProfile
+from .reconcile import Recon, Reconciliation
 from .store import Delta
 
 
@@ -30,6 +31,7 @@ class Scored:
     delta: Delta | None = None  # change vs ~24h-old local snapshot
     spark: str = ""  # fee24 sparkline from local snapshots
     flow: Flow | None = None  # swap counts (DexScreener), filled by the UI
+    recon: Recon | None = None  # deltas vs the other feed, when reconciliation is on
 
     @property
     def base(self) -> str:
@@ -182,6 +184,7 @@ def curate(
     *,
     quote: str | None = "USDG",
     protocols: set[str] | None = None,
+    recon: Reconciliation | None = None,
 ) -> list[Scored]:
     """Apply universe filters (quote token, protocols), profile filters, then score+rank."""
     out: list[Scored] = []
@@ -192,6 +195,9 @@ def curate(
             continue
         if passes(p, prof) is not None:
             continue
-        out.append(score_pool(p, prof))
+        s = score_pool(p, prof)
+        if recon is not None:
+            s.recon = recon.get(p)
+        out.append(s)
     out.sort(key=lambda s: s.score, reverse=True)
     return out

@@ -44,6 +44,7 @@ class Config:
     pool_source: str = "krystal"  # krystal | rhpools (chain-indexed, Robinhood only)
     rhpools_url: str = "https://rhpools.lol"  # or a local `rhpools --port 8196`
     rhpools_top: int = 300  # pools per window pulled from rhpools (150 per request)
+    reconcile: bool = False  # also fetch the other feed and show SRCΔ (Robinhood only)
     quote: str = "USDG"  # "any" disables
     profile: str = "balanced"
     protocols: list[str] = field(default_factory=list)
@@ -90,6 +91,7 @@ _ENV_MAP = {  # env var → config field (secrets excluded on purpose)
     "KRYSTAL_CHAIN": "chain",
     "KRYSTAL_SOURCE": "pool_source",
     "KRYSTAL_RHPOOLS_URL": "rhpools_url",
+    "KRYSTAL_RECONCILE": "reconcile",
     "KRYSTAL_QUOTE": "quote",
     "KRYSTAL_PROFILE": "profile",
     "KRYSTAL_SIZE": "size",
@@ -145,6 +147,7 @@ chain = 4663            # Robinhood. 8453 base, 1 ethereum, 56 bsc, 42161 arbitr
 pool_source = "krystal" # krystal (any chain) | rhpools (chain-indexed, Robinhood only)
 # rhpools_url = "https://rhpools.lol"   # or http://127.0.0.1:8196 for a local indexer
 # rhpools_top = 300       # pools per window taken from rhpools
+reconcile = false       # also fetch the other feed and show SRCΔ (Krystal vs chain), Robinhood only
 quote = "USDG"          # only pools containing this token; "any" to disable
 profile = "balanced"    # conservative | balanced | aggressive | degen
 protocols = []          # e.g. ["uniswapv4", "ramsescl"]; empty = all

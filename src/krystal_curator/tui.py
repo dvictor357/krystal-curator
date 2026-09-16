@@ -39,6 +39,7 @@ from .position import simulate
 from .positions import POSITIONS_UNITS, Position, fetch_positions
 from .profiles import PROFILES, RiskProfile
 from .radar import render_radar
+from .reconcile import Recon, Reconciliation, reconcile
 from .rotation import Rotation, plan
 from .scoring import Scored, curate, score_pool
 from .store import Delta, Store, sparkline
@@ -98,6 +99,7 @@ COLUMNS = (
     "TX24",
     "σ%",
     "DD24",
+    "SRCΔ",
     "MY$/D",
     "NET$/D",
     "SHARE",
@@ -170,6 +172,14 @@ def _delta_text(pct: float | None) -> Text:
     return Text(f"{pct:+.0f}%", style=style, justify="right")
 
 
+def _recon_text(r: Recon | None) -> Text:
+    """SRCΔ cell: TVL delta vs the other feed (or vol/fee when TVL is not comparable)."""
+    if r is None:
+        return Text("-", style="dim", justify="right")
+    style = {"warn": "bold red", "note": "yellow", "ok": "green"}.get(r.level, "dim")
+    return Text(r.headline, style=style, justify="right")
+
+
 def _grade_text(g: str) -> Text:
     colors = {
         "A": "green",
@@ -199,6 +209,7 @@ SORTABLE: dict[str, Callable[[Scored], float | str]] = {
     "LIVE": lambda s: s.pool.liveness,
     "σ%": lambda s: s.pool.volatility,
     "DD24": lambda s: s.pool.drawdown24h,
+    "SRCΔ": lambda s: s.recon.worst if s.recon and s.recon.worst is not None else -1.0,
     "MY$/D": lambda s: s.sim.fee_day if s.sim else 0.0,
     "NET$/D": lambda s: s.sim.net_day if s.sim else 0.0,
     "SHARE": lambda s: s.sim.share if s.sim else 0.0,
@@ -1025,6 +1036,7 @@ class CuratorApp(App[None]):
         self.sort_col = "SCORE"
         self.sort_desc = True
         self.pools: list[Pool] = []
+        self.recon: Reconciliation | None = None
         self.rows: list[Scored] = []
         self.find_text = ""
         self.last_refresh: datetime | None = None
@@ -1087,10 +1099,25 @@ class CuratorApp(App[None]):
                 vaults = fetch_vaults(self.wallet, chain_id=self.chain_id)
             except KrystalError as e:
                 self.call_from_thread(self.notify, str(e), title="VAULTS", severity="error")
-        self.call_from_thread(self._on_pools, pools, vaults)
+        recon: Reconciliation | None = None
+        if self.config.reconcile:
+            try:
+                other = api.fetch_reference_pools(self.chain_id, **self.config.fetch_kwargs)
+            except api.KrystalError as e:
+                self.call_from_thread(self.notify, str(e), title="RECONCILE", severity="warning")
+                other = None
+            if other is not None:
+                recon = reconcile(pools, other)
+        self.call_from_thread(self._on_pools, pools, vaults, recon)
 
-    def _on_pools(self, pools: list[Pool], vaults: list[Vault] | None = None) -> None:
+    def _on_pools(
+        self,
+        pools: list[Pool],
+        vaults: list[Vault] | None = None,
+        recon: Reconciliation | None = None,
+    ) -> None:
         self.pools = pools
+        self.recon = recon
         self.last_refresh = datetime.now(UTC)
         if not self.available_protocols:
             self.available_protocols = sorted({p.protocol for p in pools})
@@ -1139,7 +1166,9 @@ class CuratorApp(App[None]):
 
     def _current_rows(self) -> list[Scored]:
         protos = {self.protocol_filter} if self.protocol_filter else None
-        rows = curate(self.pools, self.profile, quote=self.quote, protocols=protos)
+        rows = curate(
+            self.pools, self.profile, quote=self.quote, protocols=protos, recon=self.recon
+        )
         if self.find_text:
             ft = self.find_text.upper()
             rows = [r for r in rows if ft in r.pool.pair.upper() or ft in r.pool.address.upper()]
@@ -1236,6 +1265,7 @@ class CuratorApp(App[None]):
                 _tx_cell(s.flow, "h24"),
                 _color_num(_pct(p.volatility, 1), p.volatility, 10, 40, invert=True),
                 _color_num(_pct(p.drawdown24h, 1), abs(p.drawdown24h), 10, 40, invert=True),
+                _recon_text(s.recon),
                 Text(_usd(s.sim.fee_day), justify="right", style="bold yellow"),
                 _color_num(_usd(s.sim.net_day), s.sim.net_day, 1, 0),
                 _color_num(f"{s.sim.share * 100:.1f}%", s.sim.share, 0.0, 0.25, invert=True),
@@ -1247,10 +1277,11 @@ class CuratorApp(App[None]):
                 key=p.address + p.protocol,
             )
         self._render_topbar()
+        recon = f"{self.recon.summary()}   " if self.recon else ""
         self._set_status(
             f"universe {len(self.pools)}  →  {len(self.rows)} pass   "
             f"sort {self.sort_col} {'desc' if self.sort_desc else 'asc'}   "
-            f"{self.profile.blurb}"
+            f"{recon}{self.profile.blurb}"
         )
         self._enrich_table(self.rows)
         self._enrich_flow(self.rows)
@@ -1356,6 +1387,8 @@ class CuratorApp(App[None]):
             "SIGNAL",
             f"turnover {p.turnover_24h:.2f}x   consistency {p.consistency:.2f}   liveness {p.liveness:.2f}",
         )
+        if s.recon is not None:
+            t.add_row("SRCΔ", s.recon.describe())
         f = s.flow or self.flows.get(p.address)
         if f is None:
             t.add_row("FLOW", Text("fetching swap counts …", style="dim"))
@@ -1859,6 +1892,8 @@ def write_csv(path: Path, rows: list[Scored]) -> None:
         "liveness",
         "volatility",
         "drawdown24",
+        "src_delta_tvl_pct",
+        "src_delta_vol24_pct",
         "apr24",
         "apr7d",
         "apr30d",
@@ -1897,6 +1932,12 @@ def write_csv(path: Path, rows: list[Scored]) -> None:
                     "liveness": round(p.liveness, 2),
                     "volatility": round(p.volatility, 1),
                     "drawdown24": round(p.drawdown24h, 1),
+                    "src_delta_tvl_pct": None
+                    if not s.recon or s.recon.tvl_pct is None
+                    else round(s.recon.tvl_pct, 1),
+                    "src_delta_vol24_pct": None
+                    if not s.recon or s.recon.vol24_pct is None
+                    else round(s.recon.vol24_pct, 1),
                     "apr24": round(p.s24h.apr),
                     "apr7d": round(p.s7d.apr),
                     "apr30d": round(p.s30d.apr),
