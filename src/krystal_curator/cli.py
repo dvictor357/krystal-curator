@@ -11,7 +11,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from . import api, notify
+from . import api, net, notify
 from .config import Config
 from .config import load as load_config
 from .env import load_dotenv
@@ -145,6 +145,24 @@ def build_parser(cfg: Config) -> argparse.ArgumentParser:
         "setup", help="Krystal Automation values to enter for each open position"
     )
     _common(setup, cfg)
+
+    vr = sub.add_parser(
+        "vault-review",
+        help="review one public AutoFarm vault from its URL: settings, positions, plans, report",
+    )
+    vr.add_argument(
+        "url", help="https://defi.krystal.app/vaults/<chain>/<address> or <chain>/<address>"
+    )
+    vr.add_argument(
+        "--out", type=Path, default=Path("reports"), help="report directory (default reports/)"
+    )
+    vr.add_argument(
+        "--plans", type=int, default=100, help="newest action plans to analyse (default 100)"
+    )
+    vr.add_argument(
+        "--no-raw", action="store_true", help="omit verbatim API responses from the JSON"
+    )
+    vr.add_argument("--quiet", action="store_true", help="only print the written paths")
 
     init = sub.add_parser("init", help="write config.toml and .env templates here")
     init.add_argument("--force", action="store_true", help="overwrite existing files")
@@ -573,6 +591,29 @@ def run_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_vault_review(args: argparse.Namespace) -> int:
+    from rich.markdown import Markdown
+
+    from . import vault_review as vr
+
+    con = Console()
+    try:
+        chain_id, address = vr.parse_vault_url(args.url)
+    except vr.VaultUrlError as e:
+        con.print(f"[red]{e}[/red]")
+        return 2
+    try:
+        rv = vr.fetch_review(chain_id, address, plans_limit=args.plans)
+    except (api.KrystalError, net.HttpError) as e:
+        con.print(f"[red]{net.redact(str(e))}[/red]")
+        return 1
+    md, js = vr.write_review(rv, args.out, raw=not args.no_raw)
+    if not args.quiet:
+        con.print(Markdown(md.read_text(encoding="utf-8")))
+    con.print(f"wrote {md} and {js}")
+    return 0
+
+
 def run_tui(args: argparse.Namespace, cfg: Config) -> int:
     from .tui import CuratorApp
 
@@ -619,6 +660,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_scan(args)
     if args.cmd == "backtest":
         return run_backtest(args)
+    if args.cmd == "vault-review":
+        return run_vault_review(args)
     if args.cmd == "watch":
         from .daemon import run_watch
 

@@ -1,0 +1,43 @@
+{
+ "data": [
+  {
+   "timestamp": 1789426800,
+   "feeEarned": 6.768678842263171,
+   "farmRewardEarned": 0,
+   "lpValue": 1614.3576037963192,
+   "tvl": 1614.3600685402002,
+   "tvlPrincipal": 0,
+   "apr": 1.8356110648702881,
+   "aggregatedApr": 1.8356110648702881,
+   "duration": 82800,
+   "sharePriceUsd": 0,
+   "sharePricePrincipal": 0
+  },
+  {
+   "timestamp": 1789516800,
+   "feeEarned": 3.3371658025419038,
+   "farmRewardEarned": 0,
+   "lpValue": 1630.0288522133974,
+   "tvl": 1630.03119841249,
+   "tvlPrincipal": 0,
+   "apr": 1.6869484778394572,
+   "aggregatedApr": 1.6869484778394572,
+   "duration": 90000,
+   "sharePriceUsd": 0,
+   "sharePricePrincipal": 0
+  },
+  {
+   "timestamp": 1789569000,
+   "feeEarned": 189.69976994409058,
+   "farmRewardEarned": 0,
+   "lpValue": 1598.1402886638386,
+   "tvl": 1598.142617380709,
+   "tvlPrincipal": 0,
+   "apr": 1.5778176091196339,
+   "aggregatedApr": 1.5778176091196339,
+   "duration": 52200,
+   "sharePriceUsd": 0,
+   "sharePricePrincipal": 0
+  }
+ ]
+}

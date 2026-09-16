@@ -36,6 +36,14 @@ class Vault:
     my_withdrawn: float
     positions: list[Position] = field(default_factory=list)
     closed: list[Position] = field(default_factory=list)
+    # public-vault facts (detail endpoint), unknown → "" / False / 0.0
+    owner: str = ""
+    total_users: int = 0
+    allow_deposit: bool = False
+    agent_activated: bool = False
+    securities: list[str] = field(default_factory=list)  # vaultSecurities[].value
+    max_total_cost: float = 0.0  # `maxTotalCost` as served; semantics unverified
+    min_pnl: float = 0.0  # `minPnl` as served; semantics unverified
 
     @property
     def url(self) -> str:
@@ -81,6 +89,13 @@ def _parse_vault(d: dict, *, owned: bool) -> Vault:
         my_value=fnum(up.get("value")),
         my_deposit=fnum(up.get("totalDepositValue")),
         my_withdrawn=fnum(up.get("totalWithdrawValue")),
+        owner=((d.get("owner") or {}).get("address") or d.get("ownerAddress") or "").lower(),
+        total_users=int(d.get("totalUser") or 0),
+        allow_deposit=bool(d.get("allowDeposit")),
+        agent_activated=bool(d.get("isAgentActivated")),
+        securities=[x.get("value") for x in d.get("vaultSecurities") or [] if x.get("value")],
+        max_total_cost=fnum(d.get("maxTotalCost")),
+        min_pnl=fnum(d.get("minPnl")),
     )
 
 
@@ -124,7 +139,26 @@ def parse_strategy(s: dict, vault_name: str) -> Position:
         amounts=[],
         vault=vault_name,
         fee_tier=fnum(s.get("feeTierPercentage")) or fnum(pool.get("fee")),
+        cost=fnum(s.get("maxTotalCost")),
     )
+
+
+def fetch_vault(chain_id: int, address: str) -> Vault:
+    """One vault by address, with its open and closed strategies. No wallet needed:
+    the detail endpoint is public, so `userPerformance` (if any) is the owner's, not ours.
+    """
+    detail = _get(f"{VAULTS}/{chain_id}/{address.lower()}")
+    if not isinstance(detail, dict) or not detail.get("vaultAddress"):
+        raise KrystalError(f"vaults: no vault {address} on chain {chain_id}")
+    v = _parse_vault(detail, owned=False)
+    _attach_strategies(v, detail)
+    return v
+
+
+def _attach_strategies(v: Vault, detail: dict) -> None:
+    for s in detail.get("strategies") or []:
+        p = parse_strategy(s, v.name)
+        (v.closed if p.status == "CLOSED" else v.positions).append(p)
 
 
 def fetch_vaults(wallet: str, *, chain_id: int | None = None) -> list[Vault]:
@@ -148,9 +182,6 @@ def fetch_vaults(wallet: str, *, chain_id: int | None = None) -> list[Vault]:
             seen[v.address] = v
     for v in seen.values():
         detail = _get(f"{VAULTS}/{v.chain_id}/{v.address}")
-        if not isinstance(detail, dict):
-            continue
-        for s in detail.get("strategies") or []:
-            p = parse_strategy(s, v.name)
-            (v.closed if p.status == "CLOSED" else v.positions).append(p)
+        if isinstance(detail, dict):
+            _attach_strategies(v, detail)
     return sorted(seen.values(), key=lambda v: v.tvl, reverse=True)

@@ -26,7 +26,7 @@ Precedence: **CLI flag > env var (`KRYSTAL_*`) > `config.toml` > default**. Secr
 `--config`, `$KRYSTAL_CONFIG`, `./config.toml`, then the user config dir.
 `KRYSTAL_DATA_DIR` moves the sqlite db / cache (used by the container).
 
-Commands: `tui` (default) · `scan` · `watch` · `setup` · `backtest` · `init` · `config` · `status`.
+Commands: `tui` (default) · `scan` · `watch` · `setup` · `backtest` · `vault-review` · `init` · `config` · `status`.
 
 ```sh
 uv run krystal-curator --profile aggressive
@@ -235,6 +235,25 @@ realised daily σ per pool and the ratio realised / reported. Median ≈ 1 confi
 30-day; ≈ 0.05 → annualised. Until the ratio is checked, treat IL/d, NET$/D, the ±range
 and the Automation range width as unverified.
 
+## Vault review (`vault-review`)
+
+```sh
+uv run krystal-curator vault-review https://defi.krystal.app/vaults/4663/0xd674…
+```
+
+Reads one public AutoFarm vault end to end — no wallet, no key, no LLM — and writes a
+dated Markdown + JSON snapshot to `reports/`: summary and open/closed strategies (detail
+endpoint), the agent's goal, instructions, permissions, restrictions and execution
+settings (`ai-agent-api.krystal.app/public-api/vault-agent-settings`), the newest action
+plans with their on-chain outcome and error counts, and the TVL / fee series per window
+with a fee APR re-derived from the buckets next to the feed's own. Every source that
+failed is listed as failed, everything the public data cannot state (NAV per share,
+cost semantics, plans beyond the first page) is listed under "not verifiable", and the
+owner's instructions are quoted verbatim as data. The observations at the end are facts
+about the source — exit not in the permissions, range floor below ours, APR-ranked
+selection, a quote token other than USDG, rebalance series counted as one bet, pending
+fees already inside `feeGenerated` — not a verdict.
+
 ## Assumptions about the Krystal API
 
 - `priceVolatility` is treated as a daily σ in percent — **unverified**, see `backtest --sigma`.
@@ -244,6 +263,9 @@ and the Automation range width as unverified.
   the one open strategy reports 216 days.
 - `feeTier` is already a percent; vault `feeGenerated` includes pending fees; token
   `usdPrice` is empty on Robinhood, so prices come from `tvlTokenN / balanceN`.
+- Vault `apr` and performance-bucket `apr` are fractions (5.13 = 513 %); the agent
+  settings' `maxValuePerStrategy` 0.15 with unit `%` is 15 % of TVL (verified: a 302 $ cap
+  on a ~2,015 $ vault); `sharePriceUsd` is 0 on public vaults, so no drawdown from NAV.
 
 ## Position simulator
 

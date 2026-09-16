@@ -1,0 +1,745 @@
+{
+ "chainId": 4663,
+ "chainName": "Robinhood",
+ "chainLogo": "https://files.krystal.app/DesignAssets/chains/robinhood.png",
+ "factoryAddress": "0x99029ddf03de6446524f7ffa6585458b58dc1eee",
+ "configManager": "",
+ "vaultAddress": "0xd674495c331b4e059b67745b51eef7b960f41451",
+ "ownerAddress": "",
+ "owner": {
+  "address": "0x650d9ef87fa2a11e0ea4aac943c058e495926603",
+  "followers": 0,
+  "twitterUsername": "",
+  "avatarUrl": "",
+  "website": "",
+  "verifiedLevel": "UNCONNECTED",
+  "xFollowersCount": 0,
+  "displayName": ""
+ },
+ "name": "TH 33 and 9 RH (copy)",
+ "lpValue": 0,
+ "feeGenerated": 1338.8219514475757,
+ "farmRewardGenerated": 0,
+ "pnl": 349.5861511230469,
+ "tvl": 1579.0598818494036,
+ "apr": 5.131738185882568,
+ "feeApr": 5.131738418697385,
+ "farmApr": 0,
+ "status": "",
+ "ageInSecond": 1926696,
+ "assets": [],
+ "supportedPoolAddresses": null,
+ "pools": [],
+ "totalUser": 1,
+ "totalSupply": 1,
+ "rangeStrategyType": "",
+ "totalPositionValue": 0,
+ "tvlStrategyType": "",
+ "principalToken": null,
+ "strategies": [
+  {
+   "strategyId": 97569886,
+   "chainId": 4663,
+   "chainName": "robinhood",
+   "chainLogo": "https://files.krystal.app/DesignAssets/chains/robinhood.png",
+   "nfpmAddress": "0x58daec3116aae6d93017baaea7749052e8a04fa7",
+   "tokenId": 2306026,
+   "protocol": {
+    "name": "Uniswap V4",
+    "address": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+    "logo": "https://k-assets-dev.krystal.team/web3-protocol/uniswap.png",
+    "key": "uniswapv4"
+   },
+   "lpValue": 0,
+   "feeGenerated": 99.9745965055571,
+   "farmRewardGenerated": 0,
+   "feesPending": null,
+   "feeTierPercentage": 0.78,
+   "pnl": -122.9322,
+   "roi": -77.51966,
+   "apr": 138.73828,
+   "status": "CLOSED",
+   "isSupportAutomation": false,
+   "hasAutomationOrder": false,
+   "autoOrderTypes": null,
+   "errorMessage": null,
+   "minPrice": 81.61207760194492,
+   "maxPrice": 122.43214794441504,
+   "ageInSecond": 474774,
+   "initialDepositValue": 193.2172501173491,
+   "currentPoolPrice": 232.41574630450626,
+   "tokens": [
+    {
+     "symbol": "USDG",
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
+    },
+    {
+     "symbol": "MICRODUCK",
+     "address": "0xd5f1afea47b1a9eab414d2ee740cf1d6d039e725"
+    }
+   ],
+   "pool": {
+    "id": "0xa3318d6ff46aa685b3dcee29cb09211d19a53b142fe503f8ff572258fd4c5aad",
+    "poolAddress": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "protocol": "uniswapv4",
+    "fee": 0.78
+   },
+   "lpStrategyAddress": "",
+   "farmRewardPending": 0,
+   "farmRewardClaimed": 0,
+   "farming": false,
+   "maxTotalCost": 18.454438516543117,
+   "minPnl": -141.3866360873439,
+   "isAerodromeGaugeKilled": false
+  },
+  {
+   "strategyId": 97585094,
+   "chainId": 4663,
+   "chainName": "robinhood",
+   "chainLogo": "https://files.krystal.app/DesignAssets/chains/robinhood.png",
+   "nfpmAddress": "0x58daec3116aae6d93017baaea7749052e8a04fa7",
+   "tokenId": 1892807,
+   "protocol": {
+    "name": "Uniswap V4",
+    "address": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+    "logo": "https://k-assets-dev.krystal.team/web3-protocol/uniswap.png",
+    "key": "uniswapv4"
+   },
+   "lpValue": 0,
+   "feeGenerated": 0.4710769854753339,
+   "farmRewardGenerated": 0,
+   "feesPending": null,
+   "feeTierPercentage": 1,
+   "pnl": 6.9769135,
+   "roi": 8.754949,
+   "apr": 0,
+   "status": "CLOSED",
+   "isSupportAutomation": false,
+   "hasAutomationOrder": false,
+   "autoOrderTypes": null,
+   "errorMessage": null,
+   "minPrice": 353048.702061951,
+   "maxPrice": 575697.0487080641,
+   "ageInSecond": 1424,
+   "initialDepositValue": 79.69108761779242,
+   "currentPoolPrice": 1188826.0919772317,
+   "tokens": [
+    {
+     "symbol": "ETH",
+     "address": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    {
+     "symbol": "PAR",
+     "address": "0x507b6f349a80114097a67b8b4677367acc15b220"
+    }
+   ],
+   "pool": {
+    "id": "0x78c5655cf64d5dcc13d3db21d0d72b460b4b360251618efcd21ab32a14c5fab4",
+    "poolAddress": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "protocol": "uniswapv4",
+    "fee": 1
+   },
+   "lpStrategyAddress": "",
+   "farmRewardPending": 0,
+   "farmRewardClaimed": 0,
+   "farming": false,
+   "maxTotalCost": 0,
+   "minPnl": 6.9769134521484375,
+   "isAerodromeGaugeKilled": false
+  },
+  {
+   "strategyId": 97145524,
+   "chainId": 4663,
+   "chainName": "robinhood",
+   "chainLogo": "https://files.krystal.app/DesignAssets/chains/robinhood.png",
+   "nfpmAddress": "0x58daec3116aae6d93017baaea7749052e8a04fa7",
+   "tokenId": 1674722,
+   "protocol": {
+    "name": "Uniswap V4",
+    "address": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+    "logo": "https://k-assets-dev.krystal.team/web3-protocol/uniswap.png",
+    "key": "uniswapv4"
+   },
+   "lpValue": 0,
+   "feeGenerated": 5.459151971498659,
+   "farmRewardGenerated": 0,
+   "feesPending": null,
+   "feeTierPercentage": 3.85,
+   "pnl": -6.318123,
+   "roi": -10.008455,
+   "apr": 0,
+   "status": "CLOSED",
+   "isSupportAutomation": false,
+   "hasAutomationOrder": false,
+   "autoOrderTypes": null,
+   "errorMessage": null,
+   "minPrice": 23.746591080602403,
+   "maxPrice": 36.26734730366731,
+   "ageInSecond": 65672,
+   "initialDepositValue": 63.127853952300526,
+   "currentPoolPrice": 232.09339462931808,
+   "tokens": [
+    {
+     "symbol": "USDG",
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
+    },
+    {
+     "symbol": "MICRODUCK",
+     "address": "0xd5f1afea47b1a9eab414d2ee740cf1d6d039e725"
+    }
+   ],
+   "pool": {
+    "id": "0x2c2a754cf5416edf5a815d489927b3b815f4c5a7fc78d4765003fcb696549b75",
+    "poolAddress": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "protocol": "uniswapv4",
+    "fee": 3.85
+   },
+   "lpStrategyAddress": "",
+   "farmRewardPending": 0,
+   "farmRewardClaimed": 0,
+   "farming": false,
+   "maxTotalCost": 0,
+   "minPnl": -6.318122863769531,
+   "isAerodromeGaugeKilled": false
+  },
+  {
+   "strategyId": 97464492,
+   "chainId": 4663,
+   "chainName": "robinhood",
+   "chainLogo": "https://files.krystal.app/DesignAssets/chains/robinhood.png",
+   "nfpmAddress": "0x58daec3116aae6d93017baaea7749052e8a04fa7",
+   "tokenId": 1830217,
+   "protocol": {
+    "name": "Uniswap V4",
+    "address": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+    "logo": "https://k-assets-dev.krystal.team/web3-protocol/uniswap.png",
+    "key": "uniswapv4"
+   },
+   "lpValue": 0,
+   "feeGenerated": 3.9724930837605164,
+   "farmRewardGenerated": 0,
+   "feesPending": null,
+   "feeTierPercentage": 1,
+   "pnl": 12.119312,
+   "roi": 16.767992,
+   "apr": 0,
+   "status": "CLOSED",
+   "isSupportAutomation": false,
+   "hasAutomationOrder": false,
+   "autoOrderTypes": null,
+   "errorMessage": null,
+   "minPrice": 571681.4411667641,
+   "maxPrice": 932209.3993228379,
+   "ageInSecond": 748,
+   "initialDepositValue": 72.27646644793462,
+   "currentPoolPrice": 1188826.0919772317,
+   "tokens": [
+    {
+     "symbol": "ETH",
+     "address": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    {
+     "symbol": "PAR",
+     "address": "0x507b6f349a80114097a67b8b4677367acc15b220"
+    }
+   ],
+   "pool": {
+    "id": "0x78c5655cf64d5dcc13d3db21d0d72b460b4b360251618efcd21ab32a14c5fab4",
+    "poolAddress": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "protocol": "uniswapv4",
+    "fee": 1
+   },
+   "lpStrategyAddress": "",
+   "farmRewardPending": 0,
+   "farmRewardClaimed": 0,
+   "farming": false,
+   "maxTotalCost": 0,
+   "minPnl": 12.119312286376953,
+   "isAerodromeGaugeKilled": false
+  },
+  {
+   "strategyId": 97790130,
+   "chainId": 4663,
+   "chainName": "robinhood",
+   "chainLogo": "https://files.krystal.app/DesignAssets/chains/robinhood.png",
+   "nfpmAddress": "0x58daec3116aae6d93017baaea7749052e8a04fa7",
+   "tokenId": 2015050,
+   "protocol": {
+    "name": "Uniswap V4",
+    "address": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+    "logo": "https://k-assets-dev.krystal.team/web3-protocol/uniswap.png",
+    "key": "uniswapv4"
+   },
+   "lpValue": 0,
+   "feeGenerated": 189.07163305175533,
+   "farmRewardGenerated": 0,
+   "feesPending": null,
+   "feeTierPercentage": 2.9988,
+   "pnl": 173.0799,
+   "roi": 89.033134,
+   "apr": 28.596941,
+   "status": "CLOSED",
+   "isSupportAutomation": false,
+   "hasAutomationOrder": false,
+   "autoOrderTypes": null,
+   "errorMessage": null,
+   "minPrice": 168.568297362433,
+   "maxPrice": 481.68409603474254,
+   "ageInSecond": 866015,
+   "initialDepositValue": 171.8021234235133,
+   "currentPoolPrice": 295.7459495880119,
+   "tokens": [
+    {
+     "symbol": "USDG",
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
+    },
+    {
+     "symbol": "BUCKET",
+     "address": "0xbc9e7b1c5c0081f4ae85e71ec95703d3dec9ffad"
+    }
+   ],
+   "pool": {
+    "id": "0xf995afbcf406c641a5185ba2330cfef8ec0fd7502f06d638798c48e78e6e9dac",
+    "poolAddress": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "protocol": "uniswapv4",
+    "fee": 2.9988
+   },
+   "lpStrategyAddress": "",
+   "farmRewardPending": 0,
+   "farmRewardClaimed": 0,
+   "farming": false,
+   "maxTotalCost": 3.582639716233014,
+   "minPnl": 169.49725530329823,
+   "isAerodromeGaugeKilled": false
+  },
+  {
+   "strategyId": 97825012,
+   "chainId": 4663,
+   "chainName": "robinhood",
+   "chainLogo": "https://files.krystal.app/DesignAssets/chains/robinhood.png",
+   "nfpmAddress": "0x58daec3116aae6d93017baaea7749052e8a04fa7",
+   "tokenId": 2223146,
+   "protocol": {
+    "name": "Uniswap V4",
+    "address": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+    "logo": "https://k-assets-dev.krystal.team/web3-protocol/uniswap.png",
+    "key": "uniswapv4"
+   },
+   "lpValue": 0,
+   "feeGenerated": 67.3575617390039,
+   "farmRewardGenerated": 0,
+   "feesPending": null,
+   "feeTierPercentage": 3,
+   "pnl": -153.53342,
+   "roi": -103.57146,
+   "apr": 0,
+   "status": "CLOSED",
+   "isSupportAutomation": false,
+   "hasAutomationOrder": false,
+   "autoOrderTypes": null,
+   "errorMessage": null,
+   "minPrice": 98.23553284039107,
+   "maxPrice": 104.30976603037709,
+   "ageInSecond": 212455,
+   "initialDepositValue": 166.63121640483627,
+   "currentPoolPrice": 243.9372159625364,
+   "tokens": [
+    {
+     "symbol": "USDG",
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
+    },
+    {
+     "symbol": "PAIR",
+     "address": "0x6b1d42927b1a84ec28fa88d4fc6fa7af404966be"
+    }
+   ],
+   "pool": {
+    "id": "0x25779a6de9bc9f244211c4eeabca191966d4a18e97bbe690a4af91a29e65ec86",
+    "poolAddress": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "protocol": "uniswapv4",
+    "fee": 3
+   },
+   "lpStrategyAddress": "",
+   "farmRewardPending": 0,
+   "farmRewardClaimed": 0,
+   "farming": false,
+   "maxTotalCost": 37.96112993084373,
+   "minPnl": -191.4945466788906,
+   "isAerodromeGaugeKilled": false
+  },
+  {
+   "strategyId": 98287365,
+   "chainId": 4663,
+   "chainName": "robinhood",
+   "chainLogo": "https://files.krystal.app/DesignAssets/chains/robinhood.png",
+   "nfpmAddress": "0x58daec3116aae6d93017baaea7749052e8a04fa7",
+   "tokenId": 2792151,
+   "protocol": {
+    "name": "Uniswap V4",
+    "address": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+    "logo": "https://k-assets-dev.krystal.team/web3-protocol/uniswap.png",
+    "key": "uniswapv4"
+   },
+   "lpValue": 717.0671318236713,
+   "feeGenerated": 33.76224093131967,
+   "farmRewardGenerated": 0,
+   "feesPending": [
+    {
+     "token": {
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "logo": "https://k-assets-prod.krystal.team/krystal/global-dollar.png",
+      "tag": ""
+     },
+     "tokenType": "",
+     "tokenID": "",
+     "strategyId": 0,
+     "balance": "311638",
+     "quotes": {
+      "usd": {
+       "symbol": "USD",
+       "price": 0,
+       "value": 0.3116335582662894
+      }
+     },
+     "percentage": 0
+    },
+    {
+     "token": {
+      "address": "0xfde6b5d9bb419b10c23268c74e369abff39c0460",
+      "symbol": "RCAT",
+      "name": "Red Cat \u2022 Robinhood Token",
+      "decimals": 18,
+      "logo": "https://k-assets-prod.krystal.team/krystal/red-cat-holdings-inc-robinhood-token.png",
+      "tag": ""
+     },
+     "tokenType": "",
+     "tokenID": "",
+     "strategyId": 0,
+     "balance": "132636024199763641",
+     "quotes": {
+      "usd": {
+       "symbol": "USD",
+       "price": 0,
+       "value": 0.9749338994612871
+      }
+     },
+     "percentage": 0
+    }
+   ],
+   "feeTierPercentage": 0.6,
+   "pnl": -44.252144,
+   "roi": -5.85416,
+   "apr": 1.5875206,
+   "status": "IN_RANGE",
+   "isSupportAutomation": false,
+   "hasAutomationOrder": false,
+   "autoOrderTypes": null,
+   "errorMessage": null,
+   "minPrice": 0.1289539093074363,
+   "maxPrice": 0.1394144495951878,
+   "ageInSecond": 706624,
+   "initialDepositValue": 790.7865352458508,
+   "currentPoolPrice": 0.13604423215766162,
+   "tokens": [
+    {
+     "symbol": "USDG",
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
+    },
+    {
+     "symbol": "RCAT",
+     "address": "0xfde6b5d9bb419b10c23268c74e369abff39c0460"
+    }
+   ],
+   "pool": {
+    "id": "0xa028d7036ef22af0e9493f44b3681678c6596a3027ddee9883e9e95f5d3baba9",
+    "poolAddress": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "protocol": "uniswapv4",
+    "fee": 0.6
+   },
+   "lpStrategyAddress": "",
+   "farmRewardPending": 0,
+   "farmRewardClaimed": 0,
+   "farming": false,
+   "maxTotalCost": 4.2697211883655575,
+   "minPnl": -48.52186504822884,
+   "isAerodromeGaugeKilled": false
+  },
+  {
+   "strategyId": 98287639,
+   "chainId": 4663,
+   "chainName": "robinhood",
+   "chainLogo": "https://files.krystal.app/DesignAssets/chains/robinhood.png",
+   "nfpmAddress": "0x58daec3116aae6d93017baaea7749052e8a04fa7",
+   "tokenId": 2179537,
+   "protocol": {
+    "name": "Uniswap V4",
+    "address": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+    "logo": "https://k-assets-dev.krystal.team/web3-protocol/uniswap.png",
+    "key": "uniswapv4"
+   },
+   "lpValue": 512.2587496143177,
+   "feeGenerated": 7.425566525992733,
+   "farmRewardGenerated": 0,
+   "feesPending": [
+    {
+     "token": {
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "logo": "https://k-assets-prod.krystal.team/krystal/global-dollar.png",
+      "tag": ""
+     },
+     "tokenType": "",
+     "tokenID": "",
+     "strategyId": 0,
+     "balance": "2255878",
+     "quotes": {
+      "usd": {
+       "symbol": "USD",
+       "price": 0,
+       "value": 2.2558458472799865
+      }
+     },
+     "percentage": 0
+    },
+    {
+     "token": {
+      "address": "0x86923f96303d656e4aa86d9d42d1e57ad2023fdc",
+      "symbol": "AMD",
+      "name": "AMD \u2022 Robinhood Token",
+      "decimals": 18,
+      "logo": "https://k-assets-prod.krystal.team/krystal/amd-robinhood-tokenized-stock.png",
+      "tag": ""
+     },
+     "tokenType": "",
+     "tokenID": "",
+     "strategyId": 0,
+     "balance": "4037554557735985",
+     "quotes": {
+      "usd": {
+       "symbol": "USD",
+       "price": 0,
+       "value": 2.1129476729492045
+      }
+     },
+     "percentage": 0
+    }
+   ],
+   "feeTierPercentage": 0.25,
+   "pnl": 19.618155,
+   "roi": 3.9576879,
+   "apr": 0.6144891,
+   "status": "IN_RANGE",
+   "isSupportAutomation": false,
+   "hasAutomationOrder": false,
+   "autoOrderTypes": null,
+   "errorMessage": null,
+   "minPrice": 0.001878862394219604,
+   "maxPrice": 0.002249386438056825,
+   "ageInSecond": 706547,
+   "initialDepositValue": 495.69736901191743,
+   "currentPoolPrice": 0.0019108362515143063,
+   "tokens": [
+    {
+     "symbol": "USDG",
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
+    },
+    {
+     "symbol": "AMD",
+     "address": "0x86923f96303d656e4aa86d9d42d1e57ad2023fdc"
+    }
+   ],
+   "pool": {
+    "id": "0xe1357593f2e955454fc59cbe378239ab067f840dd2a1527cb971ebf1f138fc7f",
+    "poolAddress": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "protocol": "uniswapv4",
+    "fee": 0.25
+   },
+   "lpStrategyAddress": "",
+   "farmRewardPending": 0,
+   "farmRewardClaimed": 0,
+   "farming": false,
+   "maxTotalCost": 0,
+   "minPnl": 19.618154525756836,
+   "isAerodromeGaugeKilled": false
+  },
+  {
+   "strategyId": 98412458,
+   "chainId": 4663,
+   "chainName": "robinhood",
+   "chainLogo": "https://files.krystal.app/DesignAssets/chains/robinhood.png",
+   "nfpmAddress": "0x58daec3116aae6d93017baaea7749052e8a04fa7",
+   "tokenId": 2225078,
+   "protocol": {
+    "name": "Uniswap V4",
+    "address": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+    "logo": "https://k-assets-dev.krystal.team/web3-protocol/uniswap.png",
+    "key": "uniswapv4"
+   },
+   "lpValue": 349.72894554702634,
+   "feeGenerated": 8.374392056512747,
+   "farmRewardGenerated": 0,
+   "feesPending": [
+    {
+     "token": {
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "logo": "https://k-assets-prod.krystal.team/krystal/global-dollar.png",
+      "tag": ""
+     },
+     "tokenType": "",
+     "tokenID": "",
+     "strategyId": 0,
+     "balance": "2607242",
+     "quotes": {
+      "usd": {
+       "symbol": "USD",
+       "price": 0,
+       "value": 2.607204839337041
+      }
+     },
+     "percentage": 0
+    },
+    {
+     "token": {
+      "address": "0x82da4646242e1d962e96e932269dc644c94a9caa",
+      "symbol": "WDAY",
+      "name": "Workday \u2022 Robinhood Token",
+      "decimals": 18,
+      "logo": "https://k-assets-prod.krystal.team/krystal/workday-robinhood-tokenized-stock.png",
+      "tag": ""
+     },
+     "tokenType": "",
+     "tokenID": "",
+     "strategyId": 0,
+     "balance": "7996041371898663",
+     "quotes": {
+      "usd": {
+       "symbol": "USD",
+       "price": 0,
+       "value": 1.527135975939708
+      }
+     },
+     "percentage": 0
+    }
+   ],
+   "feeTierPercentage": 2,
+   "pnl": 15.826291,
+   "roi": 4.6803584,
+   "apr": 0.85955065,
+   "status": "IN_RANGE",
+   "isSupportAutomation": false,
+   "hasAutomationOrder": false,
+   "autoOrderTypes": null,
+   "errorMessage": null,
+   "minPrice": 0.004833733920276905,
+   "maxPrice": 0.006268933460912027,
+   "ageInSecond": 668906,
+   "initialDepositValue": 338.1427056649272,
+   "currentPoolPrice": 0.005235897478282157,
+   "tokens": [
+    {
+     "symbol": "USDG",
+     "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
+    },
+    {
+     "symbol": "WDAY",
+     "address": "0x82da4646242e1d962e96e932269dc644c94a9caa"
+    }
+   ],
+   "pool": {
+    "id": "0x27bb98c5c9265a4fb0f50e074fe8c751e20b55a901c96a8e150a306417c5b1a6",
+    "poolAddress": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "protocol": "uniswapv4",
+    "fee": 2
+   },
+   "lpStrategyAddress": "",
+   "farmRewardPending": 0,
+   "farmRewardClaimed": 0,
+   "farming": false,
+   "maxTotalCost": 0,
+   "minPnl": 15.82629108428955,
+   "isAerodromeGaugeKilled": false
+  }
+ ],
+ "allowDeposit": false,
+ "vaultOwnerFeeBasisPoint": 0,
+ "earning24h": 190.59196577067792,
+ "earning30d": 5717.758973120337,
+ "riskScore": "HIGH",
+ "createdBlockTime": 1787647382,
+ "updatedBlockTime": 1787647382,
+ "userPerformance": {
+  "shares": 1,
+  "value": 1579.0598818494036,
+  "pnl24hChange": 7.007726917121008,
+  "pnlUsd": 349.58616371732205,
+  "pnlPrinciple": 0,
+  "totalDepositValue": 21316.082087015096,
+  "totalDepositPrinciple": 0,
+  "totalWithdrawValue": 18757.58116079243,
+  "totalWithdrawPrinciple": 0
+ },
+ "ownerEarningPrincipal": 0,
+ "ownerEarningValue": 0,
+ "averageApr": 0,
+ "rewardTokens": null,
+ "totalMerklRewardValue": 0,
+ "pendingMerklRewardValue": 0,
+ "sharePrice24hChangePrincipal": 0,
+ "sharePrice7dChangePrincipal": 0,
+ "sharePrice24hChangeUsd": 0,
+ "sharePrice7dChangeUsd": 0,
+ "sharePriceUsd": 0,
+ "sharePricePrincipal": 0,
+ "vaultSecurities": [
+  {
+   "value": "IL_EXTRA",
+   "score": 0,
+   "additionalData": {}
+  },
+  {
+   "value": "PRICE_IMPACT_HIGH",
+   "score": 1,
+   "additionalData": {}
+  },
+  {
+   "value": "POOL_LIST_CUSTOM",
+   "score": 2,
+   "additionalData": {}
+  },
+  {
+   "value": "TRUSTED_OWNER_ANON",
+   "score": 1,
+   "additionalData": {}
+  },
+  {
+   "value": "TOKEN_SECURITY_NEUTRAL",
+   "score": 2,
+   "additionalData": {}
+  },
+  {
+   "value": "OWNER_SHARE_HIGH",
+   "score": 3,
+   "additionalData": {}
+  }
+ ],
+ "isAutoFarmVault": true,
+ "farmRewardPending": 0,
+ "farmRewardClaimed": 0,
+ "isAgentActivated": true,
+ "themes": null,
+ "maxTotalCost": 270.56218164051757,
+ "minPnl": 79.02398207680449,
+ "supportedTokens": null,
+ "vaultType": "autofarm",
+ "copies": [],
+ "totalCopyFeeUsd": 0,
+ "copyCount": 0
+}

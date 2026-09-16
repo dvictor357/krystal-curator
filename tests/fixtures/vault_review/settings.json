@@ -1,0 +1,37 @@
+{
+ "autoFarmingConfig": {
+  "enabled": true,
+  "executionConfig": {
+   "interval": 1800000,
+   "liquiditySlippage": 0.02,
+   "maxGasFeeCeiling": 1.3,
+   "maxGasFeeCeilingUnit": "$",
+   "maxValuePerStrategy": 0.15,
+   "maxValuePerStrategyUnit": "%",
+   "strictMaxValuePerStrategy": true,
+   "swapSlippage": 0.02,
+   "withdrawSlippage": 0.02
+  },
+  "instructions": "PRIMARY OBJECTIVE:\nMaximize vault value by allocating liquidity to the highest APR pools available.\n\nPOOL SELECTION:\nOnly consider pools that meet ALL of the following conditions:\n- 7-day APR \u2265 20%\n- 24h trading volume \u2265 $50,000\n- Price volatility \u2265 10%\n\nAmong eligible pools, always prioritize the pool with the highest current APR.\n\nIf a DIFFERENT eligible pool offers a higher APR than all pools of existing positions, open a new liquidity position in that pool.\n\nIf the highest-APR pool is the SAME pool as an existing position, additional capital MAY be allocated to that pool, ONLY IF the CAPITAL DISCIPLINE RULES are satisfied.\n\nPOSITION MANAGEMENT:\nExisting liquidity positions must NOT be closed.\nRebalancing ranges and harvesting fees are allowed.\nExiting positions is strictly forbidden.\n\nCAPITAL DISCIPLINE RULES (HARD CONSTRAINTS \u2014 OVERRIDE ALL OTHER RULES):\nA position is defined as PROFITABLE if:\n(Realized rewards + Unclaimed rewards) > Absolute PnL loss on that position.\n\nLiquidity MUST NOT be increased in any position that is NOT profitable by this definition.\nAdditional liquidity positions MUST NOT be opened in a pool\nif all existing positions in that pool are NOT profitable.\n\nFor unprofitable positions:\n- Rebalancing ranges is allowed\n- Harvesting fees is allowed\n- Allocating additional capital is forbidden\n\nRANGE MANAGEMENT:\nIF a position becomes OUT_OF_RANGE  \nTHEN rebalance and adjust range to approximately 10% total width (\u00b15% around current market price).\n\nHARVESTING LOGIC:\nIF pending fees \u2265 7 USD THEN harvest rewards.\n\nTOKEN MANAGEMENT:\nIf a harvested token is NOT required for opening or increasing any eligible liquidity position, and the token\u2019s USD value \u2265 $10, swap the entire balance of that token into USDT.\n\nCAPITAL DEPLOYMENT PRIORITY:\n1. Deploy harvested or idle capital into the eligible pool with the highest APR, ONLY IF doing so does NOT violate the CAPITAL DISCIPLINE RULES.\n2. ONLY IF no higher-APR eligible pool exists AND the target position is PROFITABLE, compound harvested fees into an existing position.\n\nSTRATEGY SUMMARY:\nHarvest fees \u2192 allocate capital to the highest-APR eligible pool \u2192 never reinforce unprofitable pools \u2192 never close positions.\n\nRESTRICTIONS:\nExisting liquidity positions must NEVER be closed.\nVault expansion is allowed only through new or increased LP positions that fully comply with the CAPITAL DISCIPLINE RULES.\n\nEXCLUDED/FORBIDDEN STRATEGIES:\n1. BNB/MONKEY\n2. WBNB/TUT\n\nLOGGING:\nAdd the following details to the log messages:\n1. Add the name of the LP tokens to position details\n2. Add the amount in token and USDT value to the Harvest log details\n3. Add the amount in token and USDT value to the Increase Liquidity log details\n4. Add the name of the LP tokens to the Open Position action details",
+  "isNeedToConfirm": false,
+  "permissions": [
+   "swap_and_mint",
+   "swap_and_increase",
+   "adjust_range",
+   "harvest"
+  ],
+  "restrictions": {
+   "minimumRange": 5,
+   "minimumTvl": 1000,
+   "whitelistedPools": []
+  },
+  "targetTokenType": "stable"
+ },
+ "goal": "Maximize USD-denominated vault value by always allocating capital to the highest APR liquidity pools available.",
+ "lastTriggeredAt": null,
+ "vaultConfig": {
+  "expectedReturn": "max_gain",
+  "farmingStyle": "active",
+  "riskLevel": "high_risk"
+ }
+}

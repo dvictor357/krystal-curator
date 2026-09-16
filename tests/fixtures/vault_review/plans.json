@@ -1,0 +1,234 @@
+{
+ "success": true,
+ "data": [
+  {
+   "id": "9ce2a685-76ea-4a1f-b90d-df7f44e6aff3",
+   "agentId": "7c6d4df2-8a61-0441-9c90-da0db2bdad03",
+   "channelId": "78ed3699-d456-5e74-b8dc-0de0345e6632",
+   "status": "success",
+   "actions": [
+    {
+     "action": "adjust_range",
+     "scenario": "Adjust Position 0 because it is out of range; re-center to a ~10% price range around the current market price",
+     "pairToken": null,
+     "positionId": 0,
+     "strategyId": null,
+     "poolAddress": null
+    }
+   ],
+   "metadata": {
+    "chainId": 4663,
+    "confirming": false
+   },
+   "executedAt": "2026-09-16T15:06:19.361Z",
+   "executionResult": {
+    "results": [
+     {
+      "action": "adjust_range",
+      "txHash": "0xdad363bb3d2fd2b193e33cfccc109b86d5b1b70aa8b4bbc41d1ed4090ff609fb",
+      "gasUsed": "1060509",
+      "scenario": "Adjust Position 0 because it is out of range; re-center to a ~10% price range around the current market price",
+      "pairToken": null,
+      "positionId": 0,
+      "strategyId": null,
+      "blockNumber": 64602725,
+      "poolAddress": null,
+      "onChainStatus": "success"
+     }
+    ]
+   },
+   "createdAt": "2026-09-16T15:06:19.361Z",
+   "updatedAt": "2026-09-16T15:06:19.361Z"
+  },
+  {
+   "id": "e472a937-7003-424d-9e2f-0fb0011f75fd",
+   "agentId": "7c6d4df2-8a61-0441-9c90-da0db2bdad03",
+   "channelId": "78ed3699-d456-5e74-b8dc-0de0345e6632",
+   "status": "failed",
+   "actions": [
+    {
+     "action": "adjust_range",
+     "scenario": "Adjust Position 4 because it is out of range; re-center to a ~10% price range around the current pool price",
+     "pairToken": null,
+     "positionId": 4,
+     "strategyId": null,
+     "poolAddress": null
+    }
+   ],
+   "metadata": {
+    "chainId": 4663,
+    "confirming": false
+   },
+   "executedAt": "2026-09-11T07:47:02.321Z",
+   "executionResult": {
+    "results": [
+     {
+      "action": "swap_and_increase",
+      "txHash": "",
+      "onChainStatus": "",
+      "error": "Error: gRPC error [2]: Transaction fee exceeds maximum value allowed. Maximum allowed transaction fee is $0.298 but actual transaction cost is $0.311"
+     }
+    ]
+   },
+   "createdAt": "2026-09-11T07:47:02.321Z",
+   "updatedAt": "2026-09-11T07:47:02.321Z"
+  },
+  {
+   "id": "c68e93e7-4ba9-4bfd-a998-d98df5e2e0d4",
+   "agentId": "7c6d4df2-8a61-0441-9c90-da0db2bdad03",
+   "channelId": "78ed3699-d456-5e74-b8dc-0de0345e6632",
+   "status": "failed",
+   "actions": [
+    {
+     "action": "adjust_range",
+     "scenario": "Adjust Position 4 because it is out of range",
+     "pairToken": null,
+     "positionId": 4,
+     "strategyId": null,
+     "poolAddress": null
+    }
+   ],
+   "metadata": {
+    "chainId": 4663,
+    "confirming": false
+   },
+   "executedAt": "2026-09-11T06:16:34.413Z",
+   "executionResult": {
+    "results": [
+     {
+      "action": "swap_and_increase",
+      "txHash": "",
+      "onChainStatus": "",
+      "error": "Error: gRPC error [2]: Transaction fee exceeds maximum value allowed. Maximum allowed transaction fee is $0.301 but actual transaction cost is $0.35"
+     }
+    ]
+   },
+   "createdAt": "2026-09-11T06:16:34.414Z",
+   "updatedAt": "2026-09-11T06:16:34.414Z"
+  },
+  {
+   "id": "4478f8f1-d2ac-490b-b3b2-e092b93a7d35",
+   "agentId": "7c6d4df2-8a61-0441-9c90-da0db2bdad03",
+   "channelId": "78ed3699-d456-5e74-b8dc-0de0345e6632",
+   "status": "partial_success",
+   "actions": [
+    {
+     "action": "adjust_range",
+     "scenario": "Rebalance Position 4 because it is out of range and currently unprofitable; set a tighter ~10% price range around the current market price",
+     "pairToken": null,
+     "positionId": 4,
+     "strategyId": null,
+     "poolAddress": null
+    }
+   ],
+   "metadata": {
+    "chainId": 4663,
+    "confirming": false
+   },
+   "executedAt": "2026-09-11T05:16:20.346Z",
+   "executionResult": {
+    "results": [
+     {
+      "action": "adjust_range",
+      "txHash": "0xba38b965440a93bd484f35e66f2b2dc2b6480e4a7f18162d1dd8fa4fac201193",
+      "gasUsed": "932015",
+      "scenario": "Rebalance Position 4 because it is out of range and currently unprofitable; set a tighter ~10% price range around the current market price",
+      "pairToken": null,
+      "positionId": 4,
+      "strategyId": null,
+      "blockNumber": 60001969,
+      "poolAddress": null,
+      "onChainStatus": "success"
+     }
+    ]
+   },
+   "createdAt": "2026-09-11T05:16:20.347Z",
+   "updatedAt": "2026-09-11T05:16:20.347Z"
+  },
+  {
+   "id": "9a566635-fd99-469e-b8b2-485f98d492c9",
+   "agentId": "7c6d4df2-8a61-0441-9c90-da0db2bdad03",
+   "channelId": "78ed3699-d456-5e74-b8dc-0de0345e6632",
+   "status": "success",
+   "actions": [
+    {
+     "action": "adjust_range",
+     "scenario": "Adjust Position 4 because it is out of range; rebalance to a ~10% price range centered on current price to stay in range and capture fees",
+     "pairToken": null,
+     "positionId": 4,
+     "strategyId": null,
+     "poolAddress": null
+    }
+   ],
+   "metadata": {
+    "chainId": 4663,
+    "confirming": false
+   },
+   "executedAt": "2026-09-11T04:16:21.377Z",
+   "executionResult": {
+    "results": [
+     {
+      "action": "adjust_range",
+      "txHash": "0x2f5a05acd44aa0593e3b577e52d30930a39327e37866f0010fb11b3e8c5aca64",
+      "gasUsed": "965341",
+      "scenario": "Adjust Position 4 because it is out of range; rebalance to a ~10% price range centered on current price to stay in range and capture fees",
+      "pairToken": null,
+      "positionId": 4,
+      "strategyId": null,
+      "blockNumber": 59966592,
+      "poolAddress": null,
+      "onChainStatus": "success"
+     }
+    ]
+   },
+   "createdAt": "2026-09-11T04:16:21.377Z",
+   "updatedAt": "2026-09-11T04:16:21.377Z"
+  },
+  {
+   "id": "5c0f8148-32c8-4700-8061-16019ee9d089",
+   "agentId": "7c6d4df2-8a61-0441-9c90-da0db2bdad03",
+   "channelId": "78ed3699-d456-5e74-b8dc-0de0345e6632",
+   "status": "success",
+   "actions": [
+    {
+     "action": "adjust_range",
+     "scenario": "Adjust Position 4 because it is out of range and unprofitable, rebalancing to approximately 10% total width around the current market price",
+     "pairToken": null,
+     "positionId": 4,
+     "strategyId": null,
+     "poolAddress": null
+    }
+   ],
+   "metadata": {
+    "chainId": 4663,
+    "confirming": false
+   },
+   "executedAt": "2026-09-11T02:45:45.605Z",
+   "executionResult": {
+    "results": [
+     {
+      "action": "adjust_range",
+      "txHash": "0xe012a6f7c8ae04121c91c223ae779cca360b1c743de0fb19a292d84c7ea81b96",
+      "gasUsed": "932775",
+      "scenario": "Adjust Position 4 because it is out of range and unprofitable, rebalancing to approximately 10% total width around the current market price",
+      "pairToken": null,
+      "positionId": 4,
+      "strategyId": null,
+      "blockNumber": 59912968,
+      "poolAddress": null,
+      "onChainStatus": "success"
+     }
+    ]
+   },
+   "createdAt": "2026-09-11T02:45:45.605Z",
+   "updatedAt": "2026-09-11T02:45:45.605Z"
+  }
+ ],
+ "pagination": {
+  "offset": 0,
+  "limit": 6,
+  "count": 6,
+  "total": 711,
+  "totalPage": 119
+ }
+}

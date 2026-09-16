@@ -40,6 +40,7 @@ class Position:
     vault: str = ""  # vault name when the position lives inside a Krystal vault
     pool_alt: str = ""  # alternate pool key (v4: contract address next to the pool id)
     fee_tier: float = 0.0  # percent
+    cost: float = 0.0  # USD cost the feed attributes to the position (vault `maxTotalCost`)
 
     @property
     def pair(self) -> str:
