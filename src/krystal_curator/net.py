@@ -24,6 +24,10 @@ import httpx
 log = logging.getLogger("krystal.http")
 
 RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+# A non-idempotent request may only be re-sent on statuses that mean "not processed":
+# the server (or its gateway) refused it before doing any work. 500/502/504 say
+# nothing about whether the POST body was acted on (a paid LLM call, an alert).
+SAFE_REPLAY_STATUSES = frozenset({408, 425, 429, 503})
 MAX_BACKOFF_S = 10.0
 MAX_RETRY_AFTER_S = 30.0
 
@@ -98,12 +102,15 @@ def request(
     Retries transport failures and `retry_statuses` up to `retries` times with
     exponential backoff + jitter, honouring Retry-After. A non-idempotent method
     (POST…) is retried only when the request provably never reached the server
-    (connect failures) or the server said so (429/503 with a status); a read timeout
-    on a POST is ambiguous and is not retried — a lost alert beats a duplicate one
-    being sent three times. Responses with other status codes are returned as-is;
-    call `raise_for_status()` if you want them fatal.
+    (connect failures) or the server said it did no work (`SAFE_REPLAY_STATUSES`:
+    408/425/429/503); a read timeout or a 500/502/504 on a POST is ambiguous and is
+    not retried — a lost alert beats a duplicate one being sent three times, and a
+    paid API call must not be billed twice. Responses with other status codes are
+    returned as-is; call `raise_for_status()` if you want them fatal.
     """
     statuses = frozenset(retry_statuses)
+    if not _is_idempotent(method):
+        statuses &= SAFE_REPLAY_STATUSES
     rng = rng or random.Random()
     send = client.request if client is not None else httpx.request
     attempt = 0

@@ -96,6 +96,28 @@ def test_post_retries_only_when_request_never_reached_server():
     assert net.post("http://x/a", client=c3, sleep=sleep).status_code == 200  # server said retry
 
 
+@pytest.mark.parametrize("status", [500, 502, 504])
+def test_post_ambiguous_5xx_is_not_replayed(status):
+    """A gateway error says nothing about whether the body was acted on (and billed)."""
+    _, sleep = _no_sleep()
+    c = _client([status, 200])
+    r = net.post("http://x/a", client=c, sleep=sleep)
+    assert r.status_code == status
+    assert len(c.calls) == 1
+    # GET with the same script still retries: idempotent
+    c2 = _client([status, 200])
+    assert net.get("http://x/a", client=c2, sleep=sleep).status_code == 200
+    assert len(c2.calls) == 2
+
+
+@pytest.mark.parametrize("status", [408, 425, 429])
+def test_post_replays_on_not_processed_statuses(status):
+    _, sleep = _no_sleep()
+    c = _client([status, 200])
+    assert net.post("http://x/a", client=c, sleep=sleep).status_code == 200
+    assert len(c.calls) == 2
+
+
 def test_non_retry_status_returns_immediately():
     c = _client([404])
     delays, sleep = _no_sleep()
