@@ -83,6 +83,8 @@ class Pool:
     token0_logo: str = ""
     token1_logo: str = ""
     tx24: int | None = None  # only filled when Cloud API key present
+    price0_usd: float = 0.0  # tvlToken0 / token0 balance; 0 when the feed lacks either
+    price1_usd: float = 0.0
 
     # ---- identity -------------------------------------------------------
     @property
@@ -105,6 +107,13 @@ class Pool:
         if self.token1.upper() == q:
             return self.token0
         return self.pair
+
+    @property
+    def price(self) -> float | None:
+        """token0 priced in token1 (what a range / IL is measured on); None if unknown."""
+        if self.price0_usd > 0 and self.price1_usd > 0:
+            return self.price0_usd / self.price1_usd
+        return None
 
     @property
     def url(self) -> str:
@@ -185,6 +194,16 @@ class Pool:
         return (time.time() - self.first_seen_ts) / 86400
 
     # ---- parsing --------------------------------------------------------
+    @staticmethod
+    def _usd_price(tok: dict, tvl_usd: Any) -> float:
+        """USD per token from the pool's USD balance and raw token balance (usdPrice is empty)."""
+        try:
+            amount = int(tok.get("balance") or 0) / 10 ** int(tok.get("decimals") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+        usd = fnum(tvl_usd)
+        return usd / amount if amount > 0 and usd > 0 else 0.0
+
     @classmethod
     def from_public(cls, item: dict) -> Pool:
         t0 = item.get("token0") or {}
@@ -220,4 +239,6 @@ class Pool:
             dynamic_fee=bool(item.get("dynamicFee")),
             tag=item.get("tag") or "",
             incentives=incentives,
+            price0_usd=fnum(t0.get("usdPrice")) or cls._usd_price(t0, item.get("tvlToken0")),
+            price1_usd=fnum(t1.get("usdPrice")) or cls._usd_price(t1, item.get("tvlToken1")),
         )

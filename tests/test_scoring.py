@@ -106,3 +106,29 @@ def test_fee_mismatch_and_young_flags():
     assert "YOUNG" in score_pool(q, PROFILES["degen"]).flags
     q.first_seen_ts = int(time.time() - 10 * 86400)
     assert "YOUNG" not in score_pool(q, PROFILES["degen"]).flags
+
+
+def test_public_parse_derives_token_prices():
+    item = {
+        "chainId": 4663,
+        "protocol": "uniswapv4",
+        "poolAddress": "0xAB",
+        "token0": {
+            "symbol": "WETH",
+            "balance": "2000000000000000000",
+            "decimals": "18",
+            "usdPrice": "",
+        },
+        "token1": {"symbol": "USDG", "balance": "5000000000", "decimals": "6", "usdPrice": ""},
+        "tvlToken0": "4800",
+        "tvlToken1": "5000.5",
+        "tvlUsd": "9800.5",
+    }
+    p = Pool.from_public(item)
+    assert abs(p.price0_usd - 2400) < 1e-9
+    assert abs(p.price1_usd - 1.0001) < 1e-9
+    assert abs(p.price - 2400 / 1.0001) < 1e-9
+    item["token0"]["balance"] = "0"
+    assert Pool.from_public(item).price is None
+    item["token0"] = {"symbol": "WETH", "usdPrice": "2500"}
+    assert Pool.from_public(item).price0_usd == 2500

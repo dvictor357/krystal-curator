@@ -7,9 +7,11 @@ it looked at T and compare with the fee yield it actually delivered over the nex
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
+from itertools import pairwise
 
 from .models import Pool, Stat
 from .positions import Position
@@ -182,3 +184,105 @@ def il_check(closed: list[Position], sigma_by_pool: dict[str, float]) -> ILCheck
         price += p.pnl - p.fees_total
         fees += p.fees_total
     return ILCheck(int(n), pred, price, fees)
+
+
+# ---- is `priceVolatility` a daily σ? -----------------------------------------
+#
+# Every money number downstream (σ²/8 IL, range ±σ√days, edge distance in σ, Automation
+# range width) assumes the feed's priceVolatility is a one-day standard deviation in
+# percent. This estimates the realised daily σ from the snapshot price history and reports
+# the ratio realised / reported per pool. Ratio ≈ 1 → daily; ≈ 1/√7 (0.38) → the feed is a
+# 7-day σ; ≈ 1/√30 (0.18) → 30-day; ≈ 1/√365 (0.05) → annualised.
+
+SIGMA_MIN_RETURNS = 12
+SIGMA_MIN_SPAN_H = 12.0
+
+
+@dataclass(slots=True, frozen=True)
+class SigmaRow:
+    key: str
+    n: int  # log returns used
+    span_h: float
+    stale_frac: float  # share of returns that were exactly 0 (feed price not refreshed)
+    realised: float  # realised daily σ, percent
+    reported: float  # latest priceVolatility in the window
+    ratio: float | None  # realised / reported
+
+
+@dataclass(slots=True)
+class SigmaCheck:
+    rows: list[SigmaRow] = field(default_factory=list)
+    skipped: int = 0  # pools without enough priced history
+
+    @property
+    def median_ratio(self) -> float | None:
+        rs = [r.ratio for r in self.rows if r.ratio is not None]
+        return statistics.median(rs) if rs else None
+
+    @property
+    def verdict(self) -> str:
+        m = self.median_ratio
+        if m is None:
+            return "not enough priced history yet"
+        for scale, name in (
+            (1.0, "daily"),
+            (7**-0.5, "7-day"),
+            (30**-0.5, "30-day"),
+            (365**-0.5, "annualised"),
+        ):
+            if abs(m - scale) / scale <= 0.35:
+                return f"reported σ looks {name} (median realised/reported = {m:.2f})"
+        return f"no clean match (median realised/reported = {m:.2f}); treat σ math with care"
+
+
+def realised_sigma(series: list[tuple]) -> SigmaRow | None:
+    """Daily σ from irregularly spaced (ts, price, volatility) samples.
+
+    Variance-rate estimator: Σ r² / Σ Δt scaled to a day, so mixed 5-min and 15-min gaps
+    combine without bias. Consecutive equal prices are counted (stale_frac) because a feed
+    that does not refresh between ticks pulls the estimate down.
+    """
+    pts = [(int(ts), float(p), float(v or 0.0)) for ts, p, v in series if p and p > 0]
+    if len(pts) < 2:
+        return None
+    sum_r2 = sum_dt = 0.0
+    n = zeros = 0
+    for (t0, p0, _), (t1, p1, _) in pairwise(pts):
+        dt = t1 - t0
+        if dt <= 0:
+            continue
+        r = math.log(p1 / p0)
+        sum_r2 += r * r
+        sum_dt += dt
+        n += 1
+        zeros += r == 0.0
+    span_h = (pts[-1][0] - pts[0][0]) / 3600
+    if n < SIGMA_MIN_RETURNS or span_h < SIGMA_MIN_SPAN_H or sum_dt <= 0:
+        return None
+    realised = math.sqrt(sum_r2 / sum_dt * 86400) * 100
+    reported = pts[-1][2]
+    return SigmaRow(
+        key="",
+        n=n,
+        span_h=span_h,
+        stale_frac=zeros / n,
+        realised=realised,
+        reported=reported,
+        ratio=realised / reported if reported > 0 else None,
+    )
+
+
+def sigma_check(series_by_key: dict[str, list[tuple]], *, min_reported: float = 0.5) -> SigmaCheck:
+    """Realised vs reported σ per pool; pools whose reported σ < min_reported are ignored
+    (dead pools make the ratio meaningless)."""
+    out = SigmaCheck()
+    for key, series in series_by_key.items():
+        row = realised_sigma(series)
+        if row is None or row.reported < min_reported:
+            out.skipped += 1
+            continue
+        out.rows.append(
+            SigmaRow(key=key, **{f: getattr(row, f) for f in row.__slots__ if f != "key"})
+        )
+    out.rows.sort(key=lambda r: r.n, reverse=True)
+    return out

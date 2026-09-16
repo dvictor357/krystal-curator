@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rich import box
 from rich.console import Console
@@ -16,6 +17,9 @@ from .config import load as load_config
 from .env import load_dotenv
 from .position import simulate
 from .profiles import PROFILE_ORDER, PROFILES
+
+if TYPE_CHECKING:
+    from .store import Store
 
 
 def _common(ap: argparse.ArgumentParser, cfg: Config) -> None:
@@ -111,6 +115,11 @@ def build_parser(cfg: Config) -> argparse.ArgumentParser:
         "--horizon", type=float, default=24, help="hours ahead to evaluate (default 24)"
     )
     bt.add_argument("--days", type=float, default=14, help="history window in days (default 14)")
+    bt.add_argument(
+        "--sigma",
+        action="store_true",
+        help="only check whether the feed's priceVolatility is a daily σ (realised vs reported)",
+    )
 
     setup = sub.add_parser(
         "setup", help="Krystal Automation values to enter for each open position"
@@ -267,6 +276,43 @@ def run_status() -> int:
     return 0
 
 
+def run_sigma_check(args: argparse.Namespace, store: Store, con: Console) -> int:
+    from .backtest import SIGMA_MIN_RETURNS, SIGMA_MIN_SPAN_H, sigma_check
+
+    chk = sigma_check(store.price_series(args.chain, args.days))
+    con.print(
+        f"[bold #ffb000]priceVolatility check[/]: {len(chk.rows)} pools with ≥{SIGMA_MIN_RETURNS} "
+        f"priced returns over ≥{SIGMA_MIN_SPAN_H:.0f}h ({chk.skipped} skipped)"
+    )
+    if not chk.rows:
+        con.print(
+            "[yellow]no priced history yet — snapshots record a price since this version; "
+            "run the TUI or `watch` for a day first[/yellow]"
+        )
+        return 1
+    t = Table(header_style="bold #ffb000", box=box.SIMPLE_HEAD, pad_edge=False)
+    for c in ("POOL", "N", "SPAN", "STALE", "REALISED σ/d", "REPORTED", "RATIO"):
+        t.add_column(c, justify="left" if c == "POOL" else "right")
+    for r in chk.rows[:40]:
+        t.add_row(
+            r.key[:24],
+            str(r.n),
+            f"{r.span_h:.0f}h",
+            f"{r.stale_frac * 100:.0f}%",
+            f"{r.realised:.2f}%",
+            f"{r.reported:.2f}%",
+            "-" if r.ratio is None else f"{r.ratio:.2f}",
+        )
+    con.print(t)
+    con.print(f"[bold]{chk.verdict}[/bold]")
+    con.print(
+        "[dim]ratio ≈ 1 ⇒ daily σ (current assumption); ≈ 0.38 ⇒ 7-day; ≈ 0.18 ⇒ 30-day; "
+        "≈ 0.05 ⇒ annualised. High STALE means the feed price did not move between "
+        "snapshots, which pulls realised σ down.[/dim]"
+    )
+    return 0
+
+
 def run_backtest(args: argparse.Namespace) -> int:
     from .backtest import evaluate, il_check
     from .profiles import PROFILE_ORDER
@@ -274,6 +320,8 @@ def run_backtest(args: argparse.Namespace) -> int:
 
     con = Console(width=None if sys.stdout.isatty() else 140)
     store = Store()
+    if args.sigma:
+        return run_sigma_check(args, store, con)
     rows = [r for r in store.all_snapshots(args.days) if r[1] == args.chain]
     times = len({r[0] for r in rows})
     con.print(

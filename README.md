@@ -185,6 +185,24 @@ forward yield of STEADY / FADING / SPIKE pools, and per-component correlations (
 actually predict). With a wallet it also compares the σ²/8 IL model against the realised
 price PnL of your closed vault trades. Needs a day or two of TUI / `watch` history first.
 
+`backtest --sigma` checks the one assumption every money number rests on: that the feed's
+`priceVolatility` is a **daily** σ. Each snapshot stores the pool price (token0 in token1,
+derived from the pool's USD and token balances), so after ~a day of history it computes the
+realised daily σ per pool and the ratio realised / reported. Median ≈ 1 confirms daily;
+≈ 0.38 means the feed is a 7-day σ (ranges 2.6× too wide, IL/d 7× too high); ≈ 0.18 →
+30-day; ≈ 0.05 → annualised. Until the ratio is checked, treat IL/d, NET$/D, the ±range
+and the Automation range width as unverified.
+
+## Assumptions about the Krystal API
+
+- `priceVolatility` is treated as a daily σ in percent — **unverified**, see `backtest --sigma`.
+- `ageInSecond` on closed vault strategies is the hold time (open → close), not time since
+  open — **verified** 2026-09-16 on a public vault with 201 closed strategies: ages are
+  uncorrelated with strategy id (Spearman 0.10), the oldest ids have ages of minutes, and
+  the one open strategy reports 216 days.
+- `feeTier` is already a percent; vault `feeGenerated` includes pending fees; token
+  `usdPrice` is empty on Robinhood, so prices come from `tvlTokenN / balanceN`.
+
 ## Position simulator
 
 `--size 50000` (or `$` in the TUI) sets your position size. Every row then shows what *you*

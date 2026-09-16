@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     address   TEXT    NOT NULL,
     protocol  TEXT    NOT NULL,
     tvl       REAL, vol24 REAL, fee24 REAL, vol1h REAL, fee1h REAL,
-    fee7d     REAL, apr24 REAL, volatility REAL, drawdown REAL
+    fee7d     REAL, apr24 REAL, volatility REAL, drawdown REAL,
+    price     REAL
 );
 CREATE INDEX IF NOT EXISTS snap_pool_ts ON snapshots (chain_id, address, protocol, ts);
 CREATE TABLE IF NOT EXISTS vault_snapshots (
@@ -100,8 +101,16 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path, check_same_thread=False)
         self._db.executescript(_SCHEMA)
+        self._migrate()
         self._lock = threading.Lock()
         self.watch: set[tuple[int, str, str]] = set(self._load_watch())
+
+    def _migrate(self) -> None:
+        """Columns added after the first release (CREATE IF NOT EXISTS won't add them)."""
+        cols = {r[1] for r in self._db.execute("PRAGMA table_info(snapshots)")}
+        if "price" not in cols:
+            self._db.execute("ALTER TABLE snapshots ADD COLUMN price REAL")
+            self._db.commit()
 
     # ---- snapshots ----------------------------------------------------
     def last_ts(self) -> int:
@@ -126,11 +135,17 @@ class Store:
                 p.s24h.apr,
                 p.volatility,
                 p.drawdown24h,
+                p.price,
             )
             for p in pools
         ]
         with self._lock:
-            self._db.executemany("INSERT INTO snapshots VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+            self._db.executemany(
+                "INSERT INTO snapshots (ts, chain_id, address, protocol, tvl, vol24, fee24, "
+                "vol1h, fee1h, fee7d, apr24, volatility, drawdown, price) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                rows,
+            )
             self._db.commit()
         return len(rows)
 
@@ -145,6 +160,20 @@ class Store:
                 (since,),
             )
             return cur.fetchall()
+
+    def price_series(self, chain_id: int, days: float = 14) -> dict[str, list[tuple]]:
+        """{"address:protocol": [(ts, price, volatility), ...]} oldest first, priced rows only."""
+        since = int(time.time() - days * 86400)
+        out: dict[str, list[tuple]] = {}
+        with self._lock:
+            cur = self._db.execute(
+                "SELECT address, protocol, ts, price, volatility FROM snapshots "
+                "WHERE chain_id = ? AND ts >= ? AND price > 0 ORDER BY ts",
+                (chain_id, since),
+            )
+            for address, protocol, ts, price, vol in cur:
+                out.setdefault(f"{address}:{protocol}", []).append((ts, price, vol))
+        return out
 
     def prune(self, keep_days: int = 30) -> None:
         cutoff = int(time.time()) - keep_days * 86400

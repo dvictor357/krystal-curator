@@ -78,3 +78,40 @@ def test_mark_seen_keeps_first_timestamp(tmp_path):
     q = mk("0xa", 2, 2)
     st.mark_seen([q, mk("0xb", 1, 1)])
     assert q.first_seen_ts == first
+
+
+def test_price_recorded_and_series(tmp_path):
+    st = Store(tmp_path / "p.sqlite3")
+    now = int(time.time())
+    p = mk("0xa", 100_000, 1_000)
+    p.price0_usd, p.price1_usd = 2.0, 1.0
+    st.record([p], ts=now - 600)
+    p.price0_usd = 2.2
+    st.record([p], ts=now)
+    st.record([mk("0xb", 100_000, 1_000)], ts=now)  # no price → excluded
+    series = st.price_series(4663, days=1)
+    assert list(series) == ["0xa:uniswapv4"]
+    assert [(ts, price) for ts, price, _ in series["0xa:uniswapv4"]] == [
+        (now - 600, 2.0),
+        (now, 2.2),
+    ]
+    assert series["0xa:uniswapv4"][0][2] == 5  # volatility rides along
+
+
+def test_price_column_migrated_on_old_db(tmp_path):
+    import sqlite3
+
+    db = tmp_path / "old.sqlite3"
+    con = sqlite3.connect(db)
+    con.executescript(
+        "CREATE TABLE snapshots (ts INTEGER NOT NULL, chain_id INTEGER NOT NULL, "
+        "address TEXT NOT NULL, protocol TEXT NOT NULL, tvl REAL, vol24 REAL, fee24 REAL, "
+        "vol1h REAL, fee1h REAL, fee7d REAL, apr24 REAL, volatility REAL, drawdown REAL);"
+        "INSERT INTO snapshots VALUES (1,4663,'0xa','uniswapv4',1,1,1,1,1,1,1,1,1);"
+    )
+    con.commit()
+    con.close()
+    st = Store(db)
+    st.record([mk("0xa", 100_000, 1_000)])  # 14-column insert works after migration
+    assert st.price_series(4663, days=1) == {}  # old row and unpriced row both excluded
+    assert len(st.all_snapshots(days=1e6)) == 2
