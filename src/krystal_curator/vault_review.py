@@ -421,7 +421,7 @@ def fetch_review(
         rv.missing.append(
             "NAV per share (sharePriceUsd is 0 in every bucket) — drawdown cannot be verified"
         )
-    rv.missing.append("position costs beyond `maxTotalCost` (semantics unverified)")
+    rv.missing.append("costs other than transaction costs (`maxTotalCost`); `minPnl` semantics")
     rv.observations = observe(rv)
     return rv
 
@@ -609,12 +609,12 @@ def to_markdown(rv: Review) -> str:
             f"securities: {', '.join(v.securities) or 'none'}"
         )
         add(
-            f"- TVL {v.tvl:,.2f}$ · PnL (feed) {v.pnl:+,.2f}$ · APR (feed) {v.apr * 100:,.1f}% · "
+            f"- TVL {v.tvl:,.2f}$ · PnL (feed) {v.pnl:+,.2f}$ · APR (feed) {v.apr:,.1f}% · "
             f"feeGenerated {v.fee_generated:,.2f}$ (includes pending)"
         )
         add(
             f"- earning24h {v.earning_24h:,.2f}$ · earning30d {v.earning_30d:,.2f}$ · "
-            f"maxTotalCost {v.max_total_cost:,.2f}$ · minPnl {v.min_pnl:,.2f}$ (semantics unverified)"
+            f"tx costs spent {v.max_total_cost:,.2f}$ · minPnl {v.min_pnl:,.2f}$ (semantics unverified)"
         )
         add("- userPerformance belongs to the vault owner, not to us: not used as vault return")
         add("")
@@ -656,7 +656,7 @@ def to_markdown(rv: Review) -> str:
         add("## Open positions")
         add("")
         add(
-            "| pair | status | value | deposit | pnl | fees pend | fees claimed | range ±% | pos | age d | cost |"
+            "| pair | status | value | deposit | pnl | fees pend | fees claimed | range ±% | pos | age d | tx cost |"
         )
         add("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         for p in v.positions:

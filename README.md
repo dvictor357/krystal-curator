@@ -263,7 +263,7 @@ fees already inside `feeGenerated` — not a verdict.
   the one open strategy reports 216 days.
 - `feeTier` is already a percent; vault `feeGenerated` includes pending fees; token
   `usdPrice` is empty on Robinhood, so prices come from `tvlTokenN / balanceN`.
-- Vault `apr` and performance-bucket `apr` are fractions (5.13 = 513 %); the agent
+- Vault `apr`, strategy `apr` and performance-bucket `apr` are fractions (5.13 = 513 %; `vaults.py` converts to percent on parse); vault/strategy `maxTotalCost` = transaction costs spent; the agent
   settings' `maxValuePerStrategy` 0.15 with unit `%` is 15 % of TVL (verified: a 302 $ cap
   on a ~2,015 $ vault); `sharePriceUsd` is 0 on public vaults, so no drawdown from NAV.
 

@@ -42,7 +42,7 @@ class Vault:
     allow_deposit: bool = False
     agent_activated: bool = False
     securities: list[str] = field(default_factory=list)  # vaultSecurities[].value
-    max_total_cost: float = 0.0  # `maxTotalCost` as served; semantics unverified
+    max_total_cost: float = 0.0  # `maxTotalCost`: transaction costs spent (agent prompt label)
     min_pnl: float = 0.0  # `minPnl` as served; semantics unverified
 
     @property
@@ -80,7 +80,7 @@ def _parse_vault(d: dict, *, owned: bool) -> Vault:
         owned=owned,
         tvl=fnum(d.get("tvl")),
         pnl=fnum(d.get("pnl")),
-        apr=fnum(d.get("apr")),
+        apr=fnum(d.get("apr")) * 100,  # served as a fraction (5.13 = 513 %); Pool aprs are %
         fee_generated=fnum(d.get("feeGenerated")),
         earning_24h=fnum(d.get("earning24h")),
         earning_30d=fnum(d.get("earning30d")),
@@ -130,8 +130,9 @@ def parse_strategy(s: dict, vault_name: str) -> Position:
         fee_pending=pending,
         fee_claimed=max(0.0, fnum(s.get("feeGenerated")) - pending),
         reward_pending=fnum(s.get("farmRewardPending")),
-        fee_apr=fnum(s.get("apr")),
-        total_apr=fnum(s.get("apr")),
+        # fraction like the vault's: 1.59 on a position earning 34 $ of 717 $ in 8 d is 159 %
+        fee_apr=fnum(s.get("apr")) * 100,
+        total_apr=fnum(s.get("apr")) * 100,
         min_price=fnum(s.get("minPrice")),
         max_price=fnum(s.get("maxPrice")),
         current_price=fnum(s.get("currentPoolPrice")) or None,

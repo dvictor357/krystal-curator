@@ -27,6 +27,7 @@ STRATEGY = {
 def test_parse_strategy():
     p = parse_strategy(STRATEGY, "Mr. Farmer")
     assert p.vault == "Mr. Farmer" and p.pair == "ETH/USDG" and p.protocol == "uniswapv4"
+    assert abs(p.fee_apr - 23.0) < 1e-9 and abs(p.total_apr - 23.0) < 1e-9
     assert p.pool_address.startswith("0xbac3aa3b") and p.pool_alt.startswith("0x8366a39c")
     assert p.in_range and abs(p.fee_pending - 7.98) < 1e-9
     assert abs(p.fee_claimed) < 1e-9 and abs(p.fees_total - 7.98) < 1e-9  # generated == pending
@@ -58,6 +59,7 @@ def test_parse_vault_and_track_record():
         owned=True,
     )
     assert v.address == "0xab" and v.owned and abs(v.age_days - 9) < 1e-9
+    assert abs(v.apr - 354.0) < 1e-9  # feed fraction → percent
     assert v.url.endswith("/vaults/4663/0xab")
     assert v.win_rate is None
     win = parse_strategy({**STRATEGY, "status": "CLOSED", "pnl": 10}, v.name)
