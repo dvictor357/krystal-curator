@@ -6,6 +6,8 @@ readme = "README.md"
 authors = [
     { name = "Dimas Victor", email = "dvictor.1357@outlook.com" }
 ]
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.13"
 dependencies = [
     "httpx>=0.28.1",

@@ -1,0 +1,11 @@
+krystal-curator
+Copyright (c) 2026 Dimas Victor
+
+Licensed under the GNU Affero General Public License v3.0 only (AGPL-3.0-only).
+See LICENSE for the full text.
+
+This program consumes third-party data feeds over public HTTP and redistributes
+none of their code:
+  - Krystal LP explorer / Cloud API   https://defi.krystal.app
+  - DexScreener                       https://dexscreener.com
+  - robinhoodpools                    https://github.com/wock9000/robinhoodpools (AGPL-3.0-only)

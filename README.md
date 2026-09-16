@@ -300,3 +300,11 @@ a toast. The top bar counts units spent this session.
 uv run pytest
 uv run ruff check src tests && uv run ruff format src tests
 ```
+
+## License
+
+Copyright (c) 2026 Dimas Victor. Released under the
+[GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`): use, study and
+modify it freely, but any modified version you distribute or run as a network service must
+be published under the same license. Data feeds keep their own terms; this tool consumes
+Krystal, DexScreener and robinhoodpools over public HTTP and redistributes none of them.
