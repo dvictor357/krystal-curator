@@ -93,6 +93,7 @@ class Pool:
     price_t0_in_t1: float | None = None  # direct pool price when the source gives it (rhpools)
     source: str = "krystal"  # which feed produced this row
     tvl_basis: str = ""  # how the source measured tvl (rhpools); "" = feed's own number
+    volatility_basis: str = ""  # "" = reported by the feed; else realised from local snapshots
     risks: list[str] = field(default_factory=list)  # source-reported risk notes (rhpools)
     # metrics this source could not provide; 0.0 there means "unknown", not "zero".
     # scoring / filters skip these instead of treating them as safe.

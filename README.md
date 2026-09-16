@@ -55,7 +55,11 @@ local `rhpools` service. Robinhood (4663) only.
 What changes with `rhpools`: swap counts (`TX24`) come free (no Cloud key); TVL for v4 pools is
 the value of *observed active liquidity* (`tvl_basis`), not manager balance; volatility,
 drawdown and LP-auto support are **unknown** — filters skip them, the risk grade assumes
-mid-band, and rows carry `σ?`. Windows the service cannot serve (the public instance answers
+mid-band, and rows carry `σ?`. Every refresh records the pool price, so once the TUI or
+daemon has ≥12 h of history for a pool the blanks fill in from it: `σ` becomes realised
+daily volatility over the last 7 days (same estimator as `backtest --sigma`), `dd24` the
+worst peak-to-trough move in the last 24 h (needs ≥6 h), and the row shows `σ~` instead.
+`scan` uses the same history if the daemon has been running. Windows the service cannot serve (the public instance answers
 503 for 7d / 30d when aggregation times out) are dropped, not zero-filled: rows show `7D?`,
 yield takes a 0.75× haircut instead of the `min(24h, 7d)` rule, and SPIKE/FADING are not
 claimed. A failed window is retried after 10 minutes.

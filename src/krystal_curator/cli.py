@@ -443,6 +443,10 @@ def run_scan(args: argparse.Namespace) -> int:
     except api.KrystalError as e:
         con.print(f"[red]{e}[/red]")
         return 2
+    from .risk import fill_realised_risk
+    from .store import Store
+
+    fill_realised_risk(pools, Store())  # σ / drawdown from TUI / daemon history, if any
     rows = curate(pools, prof, quote=quote, protocols=protos)[: args.top]
     from .enrich import FlowCache
 

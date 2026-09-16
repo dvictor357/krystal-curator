@@ -152,6 +152,8 @@ def flags_for(p: Pool) -> list[str]:
         f.append("NO-AUTO")
     if "volatility" in p.unknown:
         f.append("σ?")  # source has no volatility; risk grade assumes mid-band
+    elif p.volatility_basis:
+        f.append("σ~")  # realised from this tool's own price snapshots, not the feed
     if "stat7d" in p.unknown:
         f.append("7D?")  # weekly window unavailable; yield haircut applied
     if p.risks:

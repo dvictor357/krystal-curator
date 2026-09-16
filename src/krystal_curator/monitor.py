@@ -15,6 +15,7 @@ from .config import Alerts
 from .models import Pool
 from .positions import Position
 from .profiles import PROFILES, RiskProfile
+from .risk import fill_realised_risk
 from .scoring import Scored, score_pool
 from .store import Store
 from .vaults import Vault
@@ -60,8 +61,11 @@ class Monitor:
     def tick(self, pools: list[Pool], vaults: list[Vault] | None) -> list[Alert]:
         self.pools = pools
         self.store.mark_seen(pools)
-        alerts = self._watchlist_alerts(pools)
+        # snapshot first so the feed's own numbers are what history keeps; then fill
+        # unknown σ / drawdown from that history before any rule reads them
         self._snapshot_pools(pools)
+        fill_realised_risk(pools, self.store)
+        alerts = self._watchlist_alerts(pools)
         if vaults is not None:
             self.vaults = vaults
             alerts += self._position_alerts()
