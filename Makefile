@@ -11,7 +11,7 @@ PWD_ := $(shell pwd)
 .DEFAULT_GOAL := help
 .PHONY: help install setup run scan watch status config backtest test lint fmt check \
         docker-build docker-up docker-down docker-logs docker-status docker-shell \
-        install-mac uninstall-mac logs-mac install-linux uninstall-linux logs-linux clean
+        install-mac uninstall-mac logs-mac install-linux uninstall-linux logs-linux clean demo
 
 help: ## show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[33m%-16s\033[0m %s\n",$$1,$$2}'
@@ -109,6 +109,21 @@ logs-linux: ## follow systemd logs
 	journalctl -u $(UNIT) -f
 
 # ---- misc ------------------------------------------------------------------
+# ---- demo ------------------------------------------------------------------
+# vhs (brew install vhs) records the TUI to PNG frames; ffmpeg turns them into the README GIF.
+# vhs's own GIF step fails silently with ffmpeg ≥ 8, so the tape outputs frames instead.
+# The tape copies no wallet in and points KRYSTAL_DATA_DIR at a scratch copy of the history db.
+DEMO_DATA := $(shell mktemp -d)
+demo: ## re-record demo/krystal-curator.gif (needs vhs, ffmpeg, a Chromium-based browser, network)
+	@cp "$$HOME/Library/Application Support/krystal-curator/curator.sqlite3" $(DEMO_DATA)/ 2>/dev/null || true
+	rm -rf demo/frames
+	KRYSTAL_DATA_DIR=$(DEMO_DATA) vhs demo/demo.tape
+	ffmpeg -hide_banner -loglevel error -y -framerate 50 -i demo/frames/frame-text-%05d.png \
+	  -vf "fps=12,mpdecimate=hi=256:lo=128:frac=0.1,scale=1400:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
+	  -fps_mode passthrough demo/krystal-curator.gif
+	rm -rf demo/frames $(DEMO_DATA)
+	@ls -la demo/krystal-curator.gif
+
 clean: ## remove caches, exports, reports
 	rm -rf .pytest_cache .ruff_cache exports reports
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

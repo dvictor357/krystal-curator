@@ -7,6 +7,8 @@ yield + turnover + consistency, and shows the result in a Bloomberg-style termin
 Default universe: Robinhood chain (4663), pools quoted in **USDG**, all protocols
 (Uniswap v2/v3/v4, Ramses CL).
 
+![krystal-curator TUI: ranked pools, detail pane, profiles, sort, watchlist, find, links, position size](demo/krystal-curator.gif)
+
 ## Quick start
 
 ```sh

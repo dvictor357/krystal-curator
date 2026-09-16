@@ -12,3 +12,4 @@ exports/
 .env
 reports/
 config.toml
+demo/frames/
