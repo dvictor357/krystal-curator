@@ -254,6 +254,18 @@ about the source — exit not in the permissions, range floor below ours, APR-ra
 selection, a quote token other than USDG, rebalance series counted as one bet, pending
 fees already inside `feeGenerated` — not a verdict.
 
+The report ends with an **Evaluation** against our own limits (`vault_eval.Limits`: chain
+4663, Uniswap v3/v4, USDG quote, ≤ 2 positions, second position ≤ 300 $, range ≥ 20 %
+total, pool TVL ≥ 250 k$ with 150 k$ as a documented exception, cooldown ≥ 1 h). Three
+separate answers: observed performance (closed positions counted as pair series, fees vs
+price pnl, transaction costs), risk fit (one check per rule, each pass / fail / unknown
+with its basis — `platform` for a control Krystal enforces, `instructions` for the
+owner's free text, `data` for what the positions show), and evidence (age, series, plan
+coverage, failed sources). The verdict is a rule, not a score: a platform-level fail is
+`avoid` whatever the APR, thin evidence is `insufficient_data`, and only a vault whose
+fee record pays for its price moves is `worth_testing` (with the instruction-level
+adaptations listed); the rest is `watch`.
+
 ## Assumptions about the Krystal API
 
 - `priceVolatility` is treated as a daily σ in percent — **unverified**, see `backtest --sigma`.

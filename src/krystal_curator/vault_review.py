@@ -29,6 +29,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 from urllib.parse import urlparse
 
 from . import net
@@ -36,6 +37,12 @@ from .analytics import TrackRecord, track_record
 from .api import _HEADERS, KrystalError
 from .models import fnum
 from .vaults import Vault, fetch_vault
+
+
+class Evaluation(Protocol):
+    def to_markdown(self) -> str: ...
+    def to_dict(self) -> dict: ...
+
 
 AGENT_API = "https://ai-agent-api.krystal.app/public-api"
 PERF_API = "https://api.krystal.app/all/v1/vaults/performance"
@@ -582,7 +589,8 @@ def _frac(x: float | None) -> str:
     return "unknown" if x is None else f"{x * 100:g}%"
 
 
-def to_markdown(rv: Review) -> str:
+def to_markdown(rv: Review, evaluation: Evaluation | None = None) -> str:
+    """`evaluation` is the vault_eval result (duck-typed to avoid the import cycle)."""
     v = rv.vault
     s = rv.settings
     L: list[str] = []
@@ -734,10 +742,12 @@ def to_markdown(rv: Review) -> str:
     for m in rv.missing:
         add(f"- {m}")
     add("")
+    if evaluation is not None:
+        add(evaluation.to_markdown())
     return "\n".join(L)
 
 
-def to_json(rv: Review, *, raw: bool = True) -> str:
+def to_json(rv: Review, *, raw: bool = True, evaluation: Evaluation | None = None) -> str:
     d = asdict(rv)
     if not raw:
         d.pop("raw", None)
@@ -753,14 +763,18 @@ def to_json(rv: Review, *, raw: bool = True) -> str:
         }
         for tf, ps in rv.perf.items()
     }
+    if evaluation is not None:
+        d["evaluation"] = evaluation.to_dict()
     return json.dumps(d, indent=1, ensure_ascii=False)
 
 
-def write_review(rv: Review, out: Path, *, raw: bool = True) -> tuple[Path, Path]:
+def write_review(
+    rv: Review, out: Path, *, raw: bool = True, evaluation: Evaluation | None = None
+) -> tuple[Path, Path]:
     out.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M")
     stem = f"vault_review_{rv.chain_id}_{rv.address[:10]}_{stamp}"
     md, js = out / f"{stem}.md", out / f"{stem}.json"
-    md.write_text(to_markdown(rv), encoding="utf-8")
-    js.write_text(to_json(rv, raw=raw), encoding="utf-8")
+    md.write_text(to_markdown(rv, evaluation), encoding="utf-8")
+    js.write_text(to_json(rv, raw=raw, evaluation=evaluation), encoding="utf-8")
     return md, js

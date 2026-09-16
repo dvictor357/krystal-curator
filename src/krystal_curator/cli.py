@@ -594,6 +594,7 @@ def run_scan(args: argparse.Namespace) -> int:
 def run_vault_review(args: argparse.Namespace) -> int:
     from rich.markdown import Markdown
 
+    from . import vault_eval
     from . import vault_review as vr
 
     con = Console()
@@ -607,9 +608,11 @@ def run_vault_review(args: argparse.Namespace) -> int:
     except (api.KrystalError, net.HttpError) as e:
         con.print(f"[red]{net.redact(str(e))}[/red]")
         return 1
-    md, js = vr.write_review(rv, args.out, raw=not args.no_raw)
+    ev = vault_eval.evaluate(rv)
+    md, js = vr.write_review(rv, args.out, raw=not args.no_raw, evaluation=ev)
     if not args.quiet:
         con.print(Markdown(md.read_text(encoding="utf-8")))
+    con.print(f"verdict: [bold]{ev.verdict}[/bold] — " + "; ".join(ev.reasons[:2]))
     con.print(f"wrote {md} and {js}")
     return 0
 
