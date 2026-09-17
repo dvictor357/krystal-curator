@@ -18,6 +18,7 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.command import DiscoveryHit, Hit, Hits, Provider
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen, Screen
@@ -225,6 +226,131 @@ SORT_ORDER = [c for c in COLUMNS if c in SORTABLE]
 # text columns and risk columns read naturally ascending
 ASC_DEFAULT = {"PAIR", "PROTO", "σ%", "RK", "SHARE"}
 
+# ---- navigation ------------------------------------------------------------------------------
+
+# key → (screen name, label). `1` is the base screen; the rest are pushed on top of it.
+NAV = (
+    ("1", "screener", "SCREEN"),
+    ("2", "positions", "POSITIONS"),
+    ("3", "leaderboard", "LEADERBOARD"),
+    ("4", "track", "TRACK"),
+    ("5", "agent", "AGENT"),
+    (",", "settings", "SETTINGS"),
+)
+
+
+def nav_text(active: str) -> Text:
+    t = Text(" ")
+    for key, name, label in NAV:
+        on = name == active
+        t.append(f" {key} ", style="bold black on #ffb000" if on else "bold #ffb000")
+        t.append(f"{label}  ", style="bold white" if on else "#9a9a9a")
+    t.append("   : COMMANDS   ? KEYS", style="#9a9a9a")
+    return t
+
+
+HELP_KEYS = {
+    "everywhere": [
+        ("1 … 5", "screen / positions / leaderboard / track / agent"),
+        (",", "settings (ctrl+s saves and applies)"),
+        (":", "command palette: profile, sort, quote, protocol, export …"),
+        ("?", "this list"),
+        ("esc", "back / close"),
+        ("q", "quit"),
+    ],
+    "screen": [
+        ("enter", "links popup for the pool"),
+        ("o", "open the pool on Krystal"),
+        ("*  W", "watch / unwatch · watched only"),
+        ("/", "find pair or token"),
+        ("r  a", "refresh · auto-refresh on/off"),
+        ("s  S", "next sort column · reverse"),
+        ("u  p", "quote USDG/any · next protocol"),
+        ("$  e", "position size · export CSV"),
+        ("click header", "sort by that column"),
+    ],
+    "positions": [
+        ("enter", "jump the screener to that pool"),
+        ("c  x  t  e", "closed positions · rotate? · track record · report"),
+        ("o  r", "open on Krystal · refresh"),
+    ],
+    "leaderboard": [
+        ("tab", "vaults ↔ owners"),
+        ("enter", "rule review of the vault (≈5 requests)"),
+        ("a", "agent reading of the vault (addon)"),
+        ("s  c", "sort · candidates only"),
+        ("w  o  r", "write report · open · refresh"),
+    ],
+    "agent": [
+        ("enter", "ask"),
+        ("tab", "leave the input, so 1-5 navigate again"),
+        ("ctrl+l", "clear"),
+    ],
+}
+
+
+class HelpModal(ModalScreen[None]):
+    BINDINGS: ClassVar = [
+        Binding("escape", "dismiss(None)", "CLOSE"),
+        Binding("question_mark", "dismiss(None)", "CLOSE", show=False),
+    ]
+
+    def __init__(self, section: str) -> None:
+        super().__init__()
+        self.section = section
+
+    def compose(self) -> ComposeResult:
+        t = Table.grid(padding=(0, 2))
+        t.add_column(style="bold #ffb000", no_wrap=True)
+        t.add_column(style="white")
+        for name in ("everywhere", self.section):
+            t.add_row(Text(name.upper(), style="bold black on #ffb000"), "")
+            for k, what in HELP_KEYS.get(name, []):
+                t.add_row(k, what)
+            t.add_row("", "")
+        box = Static(t, id="help_box")
+        box.border_title = "KEYS"
+        yield box
+
+
+class CuratorCommands(Provider):
+    """The command palette (`:` or ctrl+p): everything the single keys used to do."""
+
+    def _commands(self) -> list[tuple[str, str, Callable[[], None]]]:
+        app: CuratorApp = self.app  # type: ignore[assignment]
+        cmds: list[tuple[str, str, Callable[[], None]]] = []
+        for key in PROFILE_ORDER:
+            cmds.append(
+                (f"profile: {key}", PROFILES[key].blurb, lambda k=key: app.action_profile(k))
+            )
+        for col in SORT_ORDER:
+            cmds.append((f"sort by {col}", "screener column", lambda c=col: app.set_sort(c)))
+        cmds.append(("sort: reverse", "asc ↔ desc", app.action_reverse_sort))
+        cmds.append(("quote: USDG only / any", "toggle the quote filter", app.action_toggle_quote))
+        cmds.append(("protocol: next", "cycle the protocol filter", app.action_cycle_protocol))
+        cmds.append(
+            ("auto-refresh on/off", f"every {app.refresh_seconds}s", app.action_toggle_auto)
+        )
+        cmds.append(("watched only on/off", "★ pools", app.action_watch_only))
+        cmds.append(("refresh now", "fetch the feed", app.action_refresh))
+        cmds.append(("export CSV", "exports/", app.action_export_csv))
+        cmds.append(("position size…", "USD for MY$/D", app.action_size))
+        for _key, name, label in NAV:
+            cmds.append((f"go: {label.lower()}", "", lambda n=name: app.action_goto(n)))
+        cmds.append(("keys", "list the shortcuts", app.action_help))
+        return cmds
+
+    async def discover(self) -> Hits:
+        for name, help_, fn in self._commands():
+            yield DiscoveryHit(name, fn, help=help_)
+
+    async def search(self, query: str) -> Hits:
+        matcher = self.matcher(query)
+        for name, help_, fn in self._commands():
+            score = matcher.match(name)
+            if score > 0:
+                yield Hit(score, matcher.highlight(name), fn, help=help_)
+
 
 class LinksModal(ModalScreen[str | None]):
     """Popup listing the pool page and every social link; Enter/click opens, Esc closes."""
@@ -323,6 +449,7 @@ class TrackScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="track_topbar")
+        yield Static(nav_text("track"), id="nav")
         body = Static("", id="track_body")
         body.border_title = "TRACK RECORD"
         yield body
@@ -505,17 +632,13 @@ class PositionsScreen(Screen[str | None]):
 
     BINDINGS: ClassVar = [
         Binding("escape", "dismiss(None)", "BACK"),
-        Binding("r", "refresh", "REFRESH"),
+        Binding("enter", "jump", "SCREEN POOL", show=True),
         Binding("c", "toggle_closed", "CLOSED"),
         Binding("x", "rotate", "ROTATE?"),
-        Binding("t", "track", "TRACK"),
+        Binding("t", "track", "TRACK", show=False),
         Binding("e", "report", "REPORT"),
-        Binding("1", "profile('conservative')", "CONS", show=False),
-        Binding("2", "profile('balanced')", "BAL", show=False),
-        Binding("3", "profile('aggressive')", "AGG", show=False),
-        Binding("4", "profile('degen')", "DEGEN", show=False),
-        Binding("o", "open_url", "OPEN"),
-        Binding("enter", "jump", "SCREEN POOL", show=True),
+        Binding("o", "open_url", "OPEN", show=False),
+        Binding("r", "refresh", "REFRESH", show=False),
     ]
 
     def __init__(self, app_ref: CuratorApp) -> None:
@@ -526,6 +649,7 @@ class PositionsScreen(Screen[str | None]):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="pos_topbar")
+        yield Static(nav_text("positions"), id="nav")
         with Horizontal(id="pos_body"):
             table = DataTable(id="pos_table", cursor_type="row")
             table.border_title = "MY POSITIONS"
@@ -978,12 +1102,13 @@ class LeaderboardScreen(Screen[None]):
     BINDINGS: ClassVar = [
         Binding("escape", "dismiss(None)", "BACK"),
         Binding("tab", "toggle_view", "VAULTS/OWNERS"),
-        Binding("s", "cycle_sort", "SORT"),
-        Binding("c", "toggle_candidates", "CANDIDATES"),
         Binding("enter", "review", "REVIEW", show=True),
-        Binding("w", "write_report", "WRITE REPORT"),
-        Binding("o", "open_url", "OPEN"),
-        Binding("r", "refresh", "REFRESH"),
+        Binding("a", "agent_review", "AGENT"),
+        Binding("s", "cycle_sort", "SORT", show=False),
+        Binding("c", "toggle_candidates", "CANDIDATES"),
+        Binding("w", "write_report", "REPORT"),
+        Binding("o", "open_url", "OPEN", show=False),
+        Binding("r", "refresh", "REFRESH", show=False),
     ]
 
     def __init__(self, app_ref: CuratorApp) -> None:
@@ -997,6 +1122,7 @@ class LeaderboardScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="lb_topbar")
+        yield Static(nav_text("leaderboard"), id="nav")
         with Horizontal(id="lb_body"):
             table = DataTable(id="lb_table", cursor_type="row")
             table.border_title = "VAULTS"
@@ -1190,6 +1316,43 @@ class LeaderboardScreen(Screen[None]):
             )
             if ev.evidence.why_not:
                 t.add_row("EVIDENCE", Text("; ".join(ev.evidence.why_not), style="yellow"))
+        run = self.curator.agent_runs.get(v.address)
+        if run is not None:
+            t.add_row("", "")
+            f = run.final
+            if f is None:
+                t.add_row("AGENT", Text(f"no answer: {run.error}", style="red"))
+            else:
+                agree = f.get("agrees_with_rule_verdict")
+                t.add_row(
+                    "AGENT",
+                    Text.assemble(
+                        (f"{run.model}  ", "dim"),
+                        (
+                            "agrees" if agree else "disagrees",
+                            "bold green" if agree else "bold yellow",
+                        ),
+                        (f"  confidence {f.get('confidence', '?')}", "dim"),
+                    ),
+                )
+                t.add_row("", Text(str(f.get("reading", ""))[:600], style="white"))
+                if not agree and f.get("disagreement"):
+                    t.add_row("", Text(str(f["disagreement"]), style="yellow"))
+                for x in (f.get("what_to_change") or [])[:5]:
+                    t.add_row("", Text(f"change: {x}", style="#ffb000"))
+                for x in (f.get("what_to_copy") or [])[:4]:
+                    t.add_row("", Text(f"copy: {x}", style="green"))
+                if run.unverified:
+                    t.add_row(
+                        "", Text("unverified numbers: " + ", ".join(run.unverified), style="red")
+                    )
+        elif self.curator.config.agent.enabled:
+            t.add_row(
+                "AGENT",
+                Text(
+                    "a = agent reading (what to copy / change, adapted instructions)", style="dim"
+                ),
+            )
         pane.update(t)
 
     # ---- actions --------------------------------------------------------
@@ -1247,10 +1410,64 @@ class LeaderboardScreen(Screen[None]):
         if rv is None:
             self._status("review it first (enter), then w writes the report", "yellow")
             return
+        agent_report = None
+        run = self.curator.agent_runs.get(r.vault.address)
+        if run is not None:
+            from .agent import AgentReport
+
+            agent_report = AgentReport(run)
         md, _ = vault_review.write_review(
-            rv, Path("reports"), evaluation=self.curator.reviews[r.vault.address]
+            rv,
+            Path("reports"),
+            evaluation=self.curator.reviews[r.vault.address],
+            agent=agent_report,
         )
         self._status(f"wrote {md}")
+
+    def action_agent_review(self) -> None:
+        r = self._selected_vault()
+        if r is None:
+            return
+        session = self.curator.agent()
+        if session is None:
+            self._status("agent addon is off — enable it in settings (,)", "yellow")
+            return
+        if r.vault.address in self.curator.agent_runs:
+            self._detail()
+            return
+        self._status(
+            f"agent reading {r.vault.name} … (rule review first if needed, then the model)"
+        )
+        self._agent_review(session, r.vault)
+
+    @work(thread=True, group="agent_review")
+    def _agent_review(self, session, v: Vault) -> None:
+        from .agent import AgentError
+
+        try:
+            rv = self.curator.review_data.get(v.address)
+            ev = self.curator.reviews.get(v.address)
+            if rv is None or ev is None:
+                rv = vault_review.fetch_review(v.chain_id, v.address)
+                ev = vault_eval.evaluate(rv)
+            run = session.review(rv, ev)
+        except (KrystalError, net.HttpError, AgentError) as e:
+            self.app.call_from_thread(self._status, f"ERROR {net.redact(str(e))}", "bold red")
+            return
+        self.app.call_from_thread(self._agent_reviewed, v, rv, ev, run)
+
+    def _agent_reviewed(self, v: Vault, rv, ev, run) -> None:
+        self.curator.reviews[v.address] = ev
+        self.curator.review_data[v.address] = rv
+        self.curator.agent_runs[v.address] = run
+        self._topbar()
+        self._detail()
+        f = run.final or {}
+        self._status(
+            f"agent: {'agrees' if f.get('agrees_with_rule_verdict') else 'disagrees'} with {ev.verdict}"
+            if run.final
+            else f"agent: {run.error}"
+        )
 
 
 # ---- settings ------------------------------------------------------------------------------
@@ -1352,11 +1569,16 @@ class SettingsScreen(Screen[None]):
     BINDINGS: ClassVar = [
         Binding("escape", "dismiss(None)", "CANCEL"),
         Binding("ctrl+s", "save", "SAVE + APPLY"),
+        # a form: digits are values here, never navigation (a Select would pass them up)
+        *[Binding(k, "noop", "", show=False) for k in "12345"],
     ]
 
     def __init__(self, app_ref: CuratorApp) -> None:
         super().__init__()
         self.curator = app_ref
+
+    def action_noop(self) -> None:
+        pass
 
     def compose(self) -> ComposeResult:
         cfg = self.curator.config
@@ -1364,6 +1586,7 @@ class SettingsScreen(Screen[None]):
             f" SETTINGS   {cfg.source or 'no config.toml yet — save writes ./config.toml'}",
             id="set_topbar",
         )
+        yield Static(nav_text("settings"), id="nav")
         with VerticalScroll(id="set_body"):
             section = ""
             for sec, key, label, kind, extra in SETTINGS:
@@ -1431,32 +1654,175 @@ class SettingsScreen(Screen[None]):
         self.dismiss(None)
 
 
+# ---- agent ---------------------------------------------------------------------------------
+
+
+class AgentScreen(Screen[None]):
+    """Ask the local-LLM addon questions over the leaderboard, reviews, pools and
+    positions. Each answer is the agent's `final` rendered with its evidence and the
+    unverified numbers; the tool trace follows in dim text. The model server starts on
+    the first question and lives until the app exits."""
+
+    BINDINGS: ClassVar = [
+        Binding("escape", "dismiss(None)", "BACK"),
+        Binding("ctrl+l", "clear_log", "CLEAR"),
+    ]
+
+    def __init__(self, app_ref: CuratorApp) -> None:
+        super().__init__()
+        self.curator = app_ref
+        self.busy = False
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="agent_topbar")
+        yield Static(nav_text("agent"), id="nav")
+        log = VerticalScroll(id="agent_log")
+        log.border_title = "AGENT"
+        yield log
+        yield Input(
+            placeholder="ask … e.g. which copy candidates respect our range floor?",
+            id="agent_input",
+        )
+        yield Static("", id="agent_status")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        a = self.curator.config.agent
+        self._topbar()
+        if not a.enabled:
+            self._say(
+                Text(
+                    "agent addon is off — press , and turn on AGENT › local-LLM agent addon, "
+                    "set the GGUF path (or a base_url), save",
+                    style="yellow",
+                )
+            )
+        elif not self.curator.agent_runs and not self.curator.agent_session:
+            self._say(
+                Text(
+                    "read-only tools: limits · leaderboard · vault_review · pool · my_positions. "
+                    "The first question starts the model server (a few seconds).",
+                    style="dim",
+                )
+            )
+        self.query_one("#agent_input", Input).focus()
+
+    def _topbar(self) -> None:
+        a = self.curator.config.agent
+        sess = self.curator.agent_session
+        state = (
+            "off"
+            if not a.enabled
+            else ("attached " + a.base_url if a.base_url else Path(a.model).name or "no model")
+        )
+        model = sess._client.model if sess and sess._client and sess._client.model else ""
+        if model and model != state:
+            state = f"{state} → {model}"
+        self.query_one("#agent_topbar", Static).update(
+            f" AGENT   {state}   {len(self.curator.agent_runs)} readings this session   "
+            f"max {a.max_steps} tool calls/question   thinking {'on' if a.reasoning_budget > 0 else 'off'}"
+        )
+
+    def _say(self, renderable) -> None:
+        log = self.query_one("#agent_log", VerticalScroll)
+        log.mount(Static(renderable, classes="agent_entry"))
+        log.scroll_end(animate=False)
+
+    def _status(self, msg: str, style: str = "") -> None:
+        self.query_one("#agent_status", Static).update(Text(msg, style=style))
+
+    def on_input_submitted(self, ev: Input.Submitted) -> None:
+        q = ev.value.strip()
+        if not q or self.busy:
+            return
+        ev.input.value = ""
+        self._say(Text.assemble(("▶ ", "bold #ffb000"), (q, "bold white")))
+        session = self.curator.agent()
+        if session is None:
+            self._say(Text("agent addon is off — enable it in settings (,)", style="yellow"))
+            return
+        self.busy = True
+        self._status("thinking … (the first question also loads the model)")
+        self._ask(session, q)
+
+    @work(thread=True, group="agent_ask")
+    def _ask(self, session, q: str) -> None:
+        from .agent import AgentError
+
+        try:
+            run = session.ask(q)
+        except AgentError as e:
+            self.app.call_from_thread(self._failed, str(e))
+            return
+        self.app.call_from_thread(self._answered, run)
+
+    def _failed(self, msg: str) -> None:
+        self.busy = False
+        self._say(Text(msg, style="bold red"))
+        self._status(msg, "bold red")
+
+    def _answered(self, run) -> None:
+        from rich.markdown import Markdown
+
+        from .agent.tasks import run_markdown
+
+        self.busy = False
+        self._say(Markdown(run_markdown(run, trace=False)))
+        trace = Text()
+        for i, st in enumerate(run.steps, 1):
+            what = (
+                f"{st.tool}({', '.join(f'{k}={v!r}' for k, v in st.args.items())})"
+                if st.tool
+                else "final"
+            )
+            trace.append(
+                f"  {i}. {what}  {st.elapsed_s:.1f}s  {st.prompt_tokens}+{st.completion_tokens} tok",
+                style="dim",
+            )
+            if st.error:
+                trace.append(f"  {st.error}", style="red")
+            trace.append("\n")
+        self._say(trace)
+        self._status(f"{run.tool_calls} tool calls, {run.elapsed_s:.0f} s, stopped: {run.stopped}")
+        self._topbar()
+
+    def action_clear_log(self) -> None:
+        for w in self.query(".agent_entry"):
+            w.remove()
+
+
 class CuratorApp(App[None]):
     TITLE = "KRYSTAL CURATOR"
     CSS_PATH = "tui.tcss"
+    COMMANDS: ClassVar = {CuratorCommands}
     BINDINGS: ClassVar = [
-        Binding("1", "profile('conservative')", "CONS"),
-        Binding("2", "profile('balanced')", "BAL"),
-        Binding("3", "profile('aggressive')", "AGG"),
-        Binding("4", "profile('degen')", "DEGEN"),
-        Binding("u", "toggle_quote", "USDG"),
-        Binding("p", "cycle_protocol", "PROTO"),
-        Binding("s", "cycle_sort", "SORT"),
-        Binding("S", "reverse_sort", "ASC/DESC"),
-        Binding("r", "refresh", "REFRESH"),
-        Binding("a", "toggle_auto", "AUTO"),
-        Binding("asterisk", "toggle_watch", "WATCH", key_display="*"),
-        Binding("W", "watch_only", "★ONLY"),
-        Binding("P", "positions", "MY POS"),
-        Binding("L", "leaderboard", "LEADERBOARD"),
-        Binding("comma", "settings", "SETTINGS", key_display=","),
+        # shown: what a first-time user needs; the rest stay bound, listed under ?
+        Binding("enter", "links", "LINKS"),
         Binding("o", "open_url", "OPEN"),
-        Binding("l", "links", "LINKS"),
-        Binding("e", "export_csv", "CSV"),
+        Binding("asterisk", "toggle_watch", "WATCH", key_display="*"),
         Binding("slash", "find", "FIND", key_display="/"),
-        Binding("dollar_sign", "size", "SIZE", key_display="$"),
-        Binding("escape", "clear_find", "", show=False),
+        Binding("r", "refresh", "REFRESH"),
+        Binding("colon", "command_palette", "COMMANDS", key_display=":"),
+        Binding("comma", "goto('settings')", "SETTINGS", key_display=","),
+        Binding("question_mark", "help", "KEYS", key_display="?"),
         Binding("q", "quit", "QUIT"),
+        # navigation: app-level so every screen has them; an Input keeps its digits
+        Binding("1", "goto('screener')", "", show=False),
+        Binding("2", "goto('positions')", "", show=False),
+        Binding("3", "goto('leaderboard')", "", show=False),
+        Binding("4", "goto('track')", "", show=False),
+        Binding("5", "goto('agent')", "", show=False),
+        # power keys, screener only
+        Binding("u", "toggle_quote", "USDG", show=False),
+        Binding("p", "cycle_protocol", "PROTO", show=False),
+        Binding("s", "cycle_sort", "SORT", show=False),
+        Binding("S", "reverse_sort", "ASC/DESC", show=False),
+        Binding("a", "toggle_auto", "AUTO", show=False),
+        Binding("W", "watch_only", "★ONLY", show=False),
+        Binding("l", "links", "LINKS", show=False),
+        Binding("e", "export_csv", "CSV", show=False),
+        Binding("dollar_sign", "size", "SIZE", show=False),
+        Binding("escape", "clear_find", "", show=False),
     ]
 
     def __init__(
@@ -1482,6 +1848,8 @@ class CuratorApp(App[None]):
         self.board: leaderboard.Leaderboard | None = None
         self.reviews: dict[str, vault_eval.Evaluation] = {}  # vault address → verdict
         self.review_data: dict[str, vault_review.Review] = {}
+        self.agent_session = None  # agent.Session, created on first use when enabled
+        self.agent_runs: dict[str, object] = {}  # vault address → agent.AgentRun (readings)
         self.position_size = size
         self.refresh_seconds = refresh_seconds if refresh_seconds > 0 else 300
         self.auto = refresh_seconds > 0
@@ -1519,6 +1887,7 @@ class CuratorApp(App[None]):
     # ---- layout ---------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield Static("", id="topbar")
+        yield Static(nav_text("screener"), id="nav")
         with Vertical(id="body"):
             with Horizontal():
                 table = DataTable(id="table", cursor_type="row", zebra_stripes=False)
@@ -2238,7 +2607,68 @@ class CuratorApp(App[None]):
         self.push_screen(LeaderboardScreen(self))
 
     def action_settings(self) -> None:
-        self.push_screen(SettingsScreen(self))
+        self.action_goto("settings")
+
+    def action_help(self) -> None:
+        section = {
+            "Screen": "screen",
+            "PositionsScreen": "positions",
+            "LeaderboardScreen": "leaderboard",
+            "AgentScreen": "agent",
+            "TrackScreen": "positions",
+        }.get(type(self.screen).__name__, "screen")
+        self.push_screen(HelpModal(section))
+
+    def action_goto(self, name: str) -> None:
+        """Switch screens like tabs: back to the base, then the target on top of it."""
+        current = type(self.screen).__name__
+        target = {
+            "screener": None,
+            "positions": "PositionsScreen",
+            "leaderboard": "LeaderboardScreen",
+            "track": "TrackScreen",
+            "agent": "AgentScreen",
+            "settings": "SettingsScreen",
+        }[name]
+        if current == (target or "Screen"):
+            return
+        while len(self.screen_stack) > 1:
+            self.pop_screen()
+        if name == "screener":
+            return
+        if name == "positions":
+            self.action_positions()
+        elif name == "leaderboard":
+            self.push_screen(LeaderboardScreen(self))
+        elif name == "track":
+            if not self.vaults:
+                self.notify(
+                    "no vaults loaded — open positions first", title="TRACK", severity="warning"
+                )
+                return
+            self.push_screen(TrackScreen(self))
+        elif name == "agent":
+            self.push_screen(AgentScreen(self))
+        elif name == "settings":
+            self.push_screen(SettingsScreen(self))
+
+    def set_sort(self, col: str) -> None:
+        """Sort by a column (palette / header click): same column again flips direction."""
+        self._set_sort(col)
+
+    def agent(self):
+        """The addon session, or None when it is off. The server starts on the first task."""
+        if not self.config.agent.enabled:
+            return None
+        if self.agent_session is None:
+            from .agent import Session
+
+            self.agent_session = Session(self.config, chain_id=self.chain_id, wallet=self.wallet)
+        return self.agent_session
+
+    def on_unmount(self) -> None:
+        if self.agent_session is not None:
+            self.agent_session.close()
 
     def apply_config(self, cfg: Config) -> None:
         """Take a saved configuration live: screener filters and size re-rank at once,
@@ -2246,6 +2676,9 @@ class CuratorApp(App[None]):
         its next task. Chain / feed / renderer need a restart and are left as they are."""
         old = self.config
         self.config = cfg
+        if self.agent_session is not None and cfg.agent != old.agent:
+            self.agent_session.close()  # next task starts a session with the new settings
+            self.agent_session = None
         self.profile = PROFILES.get(cfg.profile, self.profile)
         self.monitor.profile = self.profile
         self.monitor.alerts = cfg.alerts

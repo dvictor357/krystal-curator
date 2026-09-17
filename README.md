@@ -35,8 +35,12 @@ uv run krystal-curator watch --telegram --digest-hour 0
 uv run krystal-curator status      # daemon heartbeat, last alerts, history size
 ```
 
-TUI keys: `1-4` profile · `u` toggle USDG-only · `p` cycle protocol · `s` next sort column · `S` asc/desc · click a header to sort by it · `*` watch/unwatch · `W` watched only · `a` auto-refresh on/off · `$` position size ·
-`r` refresh · `o` open pool on Krystal · `l` or `Enter` open the links popup (pool page + website / X / Telegram / Discord …, Enter opens) · `e` export CSV to `exports/` · `/` find · `P` my positions · `L` vault leaderboard · `q` quit.
+TUI: a nav strip on every screen — `1` screen · `2` positions · `3` leaderboard · `4` track · `5` agent · `,` settings ·
+`:` command palette (profile, sort by column, quote, protocol, auto-refresh, export …) · `?` the keys of the current screen.
+Screener keys: `enter` links popup · `o` open on Krystal · `*` watch · `W` watched only · `/` find · `r` refresh · `q` quit;
+still bound, hidden from the footer: `u` quote · `p` protocol · `s`/`S` sort · `a` auto · `e` CSV · `$` size. Click a header to sort.
+Settings (`,`) is a form over every `config.toml` value; `ctrl+s` validates, writes the file and applies what can change live
+(profile, quote, protocols, size, refresh timer, alert thresholds, agent); chain / feed / renderer say `[restart]`.
 
 The `LINKS` column shows which socials each pool's tokens have (sortable). `TX1H` / `TX24`
 are swap counts from DexScreener (free, 90 s cache): green 1h = pace ≥1.5× the daily
@@ -304,7 +308,7 @@ value + withdrawn − deposited, so what it nets (costs? pending fees?) is unkno
 `userPerformance` on the public list is the vault's aggregate, not one depositor's;
 lifetime deposits include re-deposits, so ROI is a floor on churny vaults.
 
-## Local-LLM agent addon (`--agent`, `ask`)
+## Local-LLM agent addon (`--agent`, `ask`, TUI `5`)
 
 Off by default; nothing changes without it. It runs a small local model through
 llama.cpp over the same read-only tools the rest of the program already has, and its
@@ -336,6 +340,11 @@ final-only grammar and demands the answer — a small model otherwise loops fore
 Thinking is off by default (`reasoning_budget = 0`): with it unlimited MiniCPM5-2B
 spends its whole token budget reasoning and returns nothing (verified); a positive
 budget is passed as `--reasoning-budget` to the server we spawn.
+
+In the TUI, `5` opens the AGENT screen (a question box over the same tools; `tab` leaves
+the box so `1-5` navigate again) and on the leaderboard `a` runs the agent reading of the
+highlighted vault — the rule review first if it has not run — into the detail pane, and
+`w` writes both into the report.
 
 What the report gets: a plain-words reading of the owner's instructions and positions,
 `what_to_copy`, `what_to_change` (each with the limit it violates), a draft of the

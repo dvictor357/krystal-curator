@@ -185,7 +185,8 @@ def system_prompt(role: str, tools: list[Tool], max_steps: int) -> str:
         f"You have at most {max_steps} tool calls; give the final answer before that.",
         (
             "Use only numbers that appeared in tool results; if a fact is not in a tool result, "
-            "say it is unknown instead of guessing."
+            "say it is unknown instead of guessing. Vault addresses come from tool results "
+            "(leaderboard, my_positions) or the task text — never invent one."
         ),
         "",
         "Tools:",

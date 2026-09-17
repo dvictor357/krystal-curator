@@ -60,16 +60,20 @@ async def test_screener_loads_and_filters(app):
         n_balanced = len(app.rows)
         assert n_balanced > 0
         assert all(r.pool.has_token("USDG") for r in app.rows)
-        await pilot.press("4")
+        app.action_profile("degen")  # profiles moved off the digit keys (palette / settings)
         await pilot.pause(0.2)
         assert len(app.rows) >= n_balanced  # degen is the loosest profile
         await pilot.press("u")
         await pilot.pause(0.2)
         assert app.quote is None
-        await pilot.press("1")
+        app.action_profile("conservative")
         await pilot.pause(0.2)
         assert app.profile.key == "conservative"
         assert "PROFILE:CONSERVATIVE" in str(app.main.query_one("#topbar").render())
+        # the digits now navigate: 4 = track (no vaults → warning, stays), 1 = screener
+        await pilot.press("4")
+        await pilot.pause(0.2)
+        assert type(app.screen).__name__ == "Screen"
 
 
 @pytest.mark.asyncio
@@ -137,7 +141,7 @@ async def test_positions_screen_without_wallet_warns(app):
     async with app.run_test(size=(220, 50)) as pilot:
         await _loaded(app, pilot)
         app.wallet = None
-        await pilot.press("P")
+        await pilot.press("2")
         await pilot.pause(0.2)
         assert type(app.screen).__name__ == "Screen"
         assert "KRYSTAL_WALLET" in str(app.main.query_one("#status").render())
@@ -220,7 +224,7 @@ async def test_positions_screen_renders_detail(app, monkeypatch):
     app.wallet = "0x000000000000000000000000000000000000dEaD"
     async with app.run_test(size=(230, 60)) as pilot:
         await _loaded(app, pilot)
-        await pilot.press("P")
+        await pilot.press("2")
         for _ in range(30):
             await pilot.pause(0.1)
             if type(app.screen).__name__ == "PositionsScreen" and app.vaults:
@@ -297,7 +301,7 @@ async def test_leaderboard_screen_ranks_and_reviews(app, monkeypatch, tmp_path):
 
     async with app.run_test(size=(240, 60)) as pilot:
         await _loaded(app, pilot)
-        await pilot.press("L")
+        await pilot.press("3")
         for _ in range(30):
             await pilot.pause(0.1)
             if type(app.screen).__name__ == "LeaderboardScreen" and app.board:
@@ -374,3 +378,161 @@ async def test_settings_screen_saves_and_applies(app, monkeypatch, tmp_path):
         await pilot.press("escape")  # cancel: nothing changes
         await pilot.pause(0.2)
         assert type(app.screen).__name__ != "SettingsScreen"
+
+
+@pytest.mark.asyncio
+async def test_nav_keys_help_and_palette(app):
+    async with app.run_test(size=(200, 50)) as pilot:
+        await _loaded(app, pilot)
+        await pilot.press("3")
+        await pilot.pause(0.3)
+        assert type(app.screen).__name__ == "LeaderboardScreen"
+        await pilot.press("3")  # already there: no second push
+        await pilot.pause(0.2)
+        assert len(app.screen_stack) == 2
+        await pilot.press("comma")
+        await pilot.pause(0.3)
+        assert type(app.screen).__name__ == "SettingsScreen" and len(app.screen_stack) == 2
+        await pilot.press("1")  # an Input has focus: the digit is typed, not navigation
+        await pilot.pause(0.2)
+        assert type(app.screen).__name__ == "SettingsScreen"
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+        assert type(app.screen).__name__ == "Screen"
+        await pilot.press("question_mark")
+        await pilot.pause(0.3)
+        assert type(app.screen).__name__ == "HelpModal"
+        assert "command palette" in _plain(app.screen.query_one("#help_box"))
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+        await pilot.press("colon")
+        await pilot.pause(0.4)
+        assert type(app.screen).__name__ == "CommandPalette"
+        await pilot.press(*"profile: degen")
+        await pilot.pause(0.6)
+        await pilot.press("enter")
+        for _ in range(20):
+            await pilot.pause(0.1)
+            if app.profile.key == "degen":
+                break
+        assert app.profile.key == "degen"
+
+
+class _FakeSession:
+    def __init__(self, final):
+        self.final = final
+        self.asked: list[str] = []
+        self._client = None
+
+    def ask(self, q):
+        from krystal_curator.agent.llm import AgentRun, Step
+
+        self.asked.append(q)
+        run = AgentRun(task=q, model="fake.gguf", stopped="final", final=self.final)
+        run.steps = [Step("t", "leaderboard", {"top": 3}, "{}", elapsed_s=0.5)]
+        return run
+
+    def review(self, rv, ev):
+        from krystal_curator.agent.llm import AgentRun
+
+        return AgentRun(
+            task="r",
+            model="fake.gguf",
+            stopped="final",
+            final={
+                "reading": "farms USDG",
+                "agrees_with_rule_verdict": False,
+                "disagreement": "fees steady",
+                "what_to_copy": ["harvest"],
+                "what_to_change": ["range 10 -> 20"],
+                "adapted_instructions": "x",
+                "evidence": [],
+                "confidence": "low",
+            },
+        )
+
+    def close(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_agent_screen_asks_through_the_session(app, monkeypatch):
+    app.config.agent.enabled = True
+    fake = _FakeSession(
+        {"answer": "28 candidates of 295", "evidence": ["leaderboard"], "confidence": "high"}
+    )
+    monkeypatch.setattr(app, "agent", lambda: fake)
+    async with app.run_test(size=(200, 50)) as pilot:
+        await _loaded(app, pilot)
+        await pilot.press("5")
+        await pilot.pause(0.3)
+        assert type(app.screen).__name__ == "AgentScreen"
+        box = app.screen.query_one("#agent_input")
+        box.value = "how many candidates?"
+        await pilot.press("enter")
+        for _ in range(30):
+            await pilot.pause(0.1)
+            if not app.screen.busy:
+                break
+        assert fake.asked == ["how many candidates?"]
+        entries = [_plain(w) for w in app.screen.query(".agent_entry")]
+        assert any("28 candidates of 295" in e for e in entries)
+        assert any("leaderboard(top=3)" in e for e in entries)
+        assert "1 tool calls" in _plain(app.screen.query_one("#agent_status"))
+
+
+@pytest.mark.asyncio
+async def test_agent_screen_when_addon_is_off(app):
+    async with app.run_test(size=(200, 50)) as pilot:
+        await _loaded(app, pilot)
+        await pilot.press("5")
+        await pilot.pause(0.3)
+        assert type(app.screen).__name__ == "AgentScreen"
+        assert "addon is off" in _plain(app.screen.query(".agent_entry").first())
+
+
+@pytest.mark.asyncio
+async def test_leaderboard_agent_reading(app, monkeypatch, tmp_path):
+    from krystal_curator import vault_eval, vault_review
+    from krystal_curator.vaults import _parse_vault
+
+    pages = json.loads((Path(__file__).parent / "fixtures" / "vault_list.json").read_text())
+    vaults = [_parse_vault(d, owned=False) for pg in pages for d in pg["data"]]
+    monkeypatch.setattr(tui_mod, "fetch_public_vaults", lambda chain_id, **kw: list(vaults))
+    ev = vault_eval.Evaluation(
+        verdict="watch",
+        reasons=["x"],
+        performance=vault_eval.Performance(),
+        checks=[],
+        evidence=vault_eval.Evidence(),
+        limits=vault_eval.DEFAULT_LIMITS,
+    )
+    monkeypatch.setattr(
+        vault_review,
+        "fetch_review",
+        lambda c, a, **k: vault_review.Review(fetched_at="", chain_id=c, address=a, url=""),
+    )
+    monkeypatch.setattr(vault_eval, "evaluate", lambda rv: ev)
+    app.config.agent.enabled = True
+    monkeypatch.setattr(app, "agent", lambda: _FakeSession({}))
+    monkeypatch.chdir(tmp_path)
+    async with app.run_test(size=(240, 60)) as pilot:
+        await _loaded(app, pilot)
+        await pilot.press("3")
+        for _ in range(30):
+            await pilot.pause(0.1)
+            if app.board:
+                break
+        await pilot.pause(0.3)
+        await pilot.press("a")  # rule review fetched first, then the agent reading
+        for _ in range(30):
+            await pilot.pause(0.1)
+            if app.agent_runs:
+                break
+        assert len(app.agent_runs) == 1 and len(app.reviews) == 1
+        body = _plain(app.screen.query_one("#lb_detail"))
+        assert "disagrees" in body and "change: range 10 -> 20" in body
+        await pilot.press("w")
+        await pilot.pause(0.3)
+        md = next((tmp_path / "reports").glob("*.md")).read_text()
+        assert "## Agent reading" in md and "fees steady" in md

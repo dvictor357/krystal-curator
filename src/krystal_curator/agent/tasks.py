@@ -143,7 +143,7 @@ class AgentReport:
         return run_markdown(self.run)
 
 
-def run_markdown(run: AgentRun) -> str:
+def run_markdown(run: AgentRun, *, trace: bool = True) -> str:
     L: list[str] = []
     add = L.append
     add(
@@ -201,6 +201,8 @@ def run_markdown(run: AgentRun) -> str:
             "**Unverified numbers** (in the answer, in no tool result): "
             + ", ".join(run.unverified)
         )
+    if not trace:
+        return "\n".join(L)
     add("")
     add("<details><summary>Trace</summary>")
     add("")

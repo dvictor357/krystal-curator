@@ -335,3 +335,74 @@ SettingsScreen {
     color: #ffb000;
     padding: 0 1;
 }
+
+#nav {
+    height: 1;
+    background: #101010;
+    padding: 0 0;
+}
+HelpModal {
+    align: center middle;
+    background: rgba(0, 0, 0, 0.6);
+}
+#help_box {
+    width: 90;
+    height: auto;
+    max-height: 90%;
+    border: solid #ff9a00;
+    border-title-color: #ffb000;
+    border-title-style: bold;
+    background: #000000;
+    padding: 1 2;
+}
+CommandPalette > Vertical {
+    background: #000000;
+    border: solid #ff9a00;
+}
+CommandPalette #--input {
+    background: #000000;
+    color: #ffffff;
+}
+CommandPalette OptionList {
+    background: #000000;
+    color: #d8d8d8;
+}
+CommandPalette OptionList > .option-list--option-highlighted {
+    background: #3a2600;
+    color: #ffffff;
+}
+
+AgentScreen {
+    background: #000000;
+}
+#agent_topbar {
+    height: 1;
+    background: #ff9a00;
+    color: #000000;
+    text-style: bold;
+    padding: 0 1;
+}
+#agent_log {
+    height: 1fr;
+    border: solid #a05e00;
+    border-title-color: #ffb000;
+    border-title-style: bold;
+    background: #000000;
+    padding: 0 1;
+}
+.agent_entry {
+    height: auto;
+    margin-bottom: 1;
+}
+#agent_input {
+    height: 3;
+    border: solid #ff9a00;
+    background: #000000;
+    color: #ffffff;
+}
+#agent_status {
+    height: 1;
+    background: #101010;
+    color: #ffb000;
+    padding: 0 1;
+}
