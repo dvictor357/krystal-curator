@@ -18,15 +18,16 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
-from textual.widgets import DataTable, Footer, Input, OptionList, Static
+from textual.widgets import DataTable, Footer, Input, Label, OptionList, Select, Static, Switch
 from textual.widgets.option_list import Option
 from textual_image.widget import HalfcellImage, Image, SixelImage, TGPImage, UnicodeImage
 
 from . import api, leaderboard, net, vault_eval, vault_review
+from . import config as config_mod
 from .advisor import Advice, advise, price_ladder
 from .analytics import idle_capital, real_roi, report_markdown, track_record
 from .api import KrystalError
@@ -37,7 +38,7 @@ from .models import Pool
 from .monitor import Monitor
 from .position import simulate
 from .positions import POSITIONS_UNITS, Position, fetch_positions
-from .profiles import PROFILES, RiskProfile
+from .profiles import PROFILE_ORDER, PROFILES, RiskProfile
 from .radar import render_radar
 from .reconcile import Recon, Reconciliation, reconcile
 from .rotation import Rotation, plan
@@ -1252,6 +1253,184 @@ class LeaderboardScreen(Screen[None]):
         self._status(f"wrote {md}")
 
 
+# ---- settings ------------------------------------------------------------------------------
+
+# (section, key, label, kind, extra). kind: text / int / float / bool / choice / list.
+# `restart` = the app must be restarted for it to take effect; the rest apply on save.
+SETTINGS: list[tuple[str, str, str, str, dict]] = [
+    ("SCREENER", "profile", "risk profile", "choice", {"options": list(PROFILE_ORDER)}),
+    ("SCREENER", "quote", "quote token (any = all)", "text", {}),
+    ("SCREENER", "protocols", "protocols (comma, empty = all)", "list", {}),
+    ("SCREENER", "size", "position size USD", "float", {}),
+    ("SCREENER", "refresh", "auto-refresh seconds (0 = off)", "int", {}),
+    ("SCREENER", "reconcile", "reconcile with the other feed (SRCΔ)", "bool", {}),
+    ("SCREENER", "wallet", "wallet 0x… (positions, monitoring)", "text", {}),
+    ("FEED", "chain", "chain id", "int", {"restart": True}),
+    (
+        "FEED",
+        "pool_source",
+        "pool feed",
+        "choice",
+        {"options": ["krystal", "rhpools"], "restart": True},
+    ),
+    ("FEED", "rhpools_url", "rhpools URL", "text", {"restart": True}),
+    (
+        "FEED",
+        "images",
+        "logo renderer (auto/tgp/sixel/halfcell/unicode/off)",
+        "text",
+        {"restart": True},
+    ),
+    ("ALERTS", "alerts.pos_pnl_drop", "position pnl drop (fraction)", "float", {}),
+    ("ALERTS", "alerts.edge_sigma", "range edge closer than N daily σ", "float", {}),
+    ("ALERTS", "alerts.watch_tvl_move", "starred pool TVL move %/h", "float", {}),
+    ("ALERTS", "alerts.watch_fee_drop", "starred pool fee24 change %", "float", {}),
+    ("ALERTS", "alerts.watch_drawdown", "starred pool drawdown %", "float", {}),
+    ("DAEMON", "interval", "watch tick seconds", "int", {}),
+    ("DAEMON", "telegram", "send alerts to Telegram", "bool", {}),
+    ("DAEMON", "digest_hour", "daily report UTC hour (empty = off)", "text", {}),
+    ("DAEMON", "rotate_cost_pct", "rotation cost %", "float", {}),
+    ("DAEMON", "snapshot_days", "keep local history days", "int", {}),
+    ("AGENT", "agent.enabled", "local-LLM agent addon", "bool", {}),
+    ("AGENT", "agent.model", "GGUF path (spawned server)", "text", {}),
+    ("AGENT", "agent.base_url", "attach to a running llama-server URL", "text", {}),
+    ("AGENT", "agent.llama_server", "llama-server binary", "text", {}),
+    ("AGENT", "agent.port", "port when spawned", "int", {}),
+    ("AGENT", "agent.ctx", "context tokens", "int", {}),
+    ("AGENT", "agent.max_steps", "tool calls per task", "int", {}),
+    ("AGENT", "agent.timeout", "seconds per model call", "float", {}),
+    ("AGENT", "agent.reasoning_budget", "thinking tokens (0 = off)", "int", {}),
+    ("AGENT", "agent.temperature", "temperature", "float", {}),
+]
+
+
+def _cfg_get(cfg: Config, key: str):
+    obj = cfg
+    for part in key.split("."):
+        obj = getattr(obj, part)
+    return obj
+
+
+def _cfg_set(cfg: Config, key: str, value) -> None:
+    *head, last = key.split(".")
+    obj = cfg
+    for part in head:
+        obj = getattr(obj, part)
+    setattr(obj, last, value)
+
+
+def parse_setting(kind: str, raw, key: str = ""):
+    """Widget value → config value; raises ValueError with the field named."""
+    try:
+        if kind == "bool":
+            return bool(raw)
+        if kind == "choice":
+            return str(raw)
+        text = str(raw).strip()
+        if kind == "int":
+            if key == "digest_hour" and not text:
+                return None
+            return int(text)
+        if kind == "float":
+            return float(text)
+        if kind == "list":
+            return [x.strip() for x in text.split(",") if x.strip()]
+        if key == "digest_hour":
+            return int(text) if text else None
+        if key == "agent.model":
+            return os.path.expanduser(text)
+        return text
+    except ValueError:
+        raise ValueError(f"{key}: {raw!r} is not a valid {kind}") from None
+
+
+class SettingsScreen(Screen[None]):
+    """Every config.toml value as a form. Save applies what can change live (profile,
+    quote, protocols, size, refresh, alerts, agent) and writes the file; fields marked
+    restart take effect on the next start."""
+
+    BINDINGS: ClassVar = [
+        Binding("escape", "dismiss(None)", "CANCEL"),
+        Binding("ctrl+s", "save", "SAVE + APPLY"),
+    ]
+
+    def __init__(self, app_ref: CuratorApp) -> None:
+        super().__init__()
+        self.curator = app_ref
+
+    def compose(self) -> ComposeResult:
+        cfg = self.curator.config
+        yield Static(
+            f" SETTINGS   {cfg.source or 'no config.toml yet — save writes ./config.toml'}",
+            id="set_topbar",
+        )
+        with VerticalScroll(id="set_body"):
+            section = ""
+            for sec, key, label, kind, extra in SETTINGS:
+                if sec != section:
+                    section = sec
+                    yield Static(sec, classes="set_section")
+                wid = "set_" + key.replace(".", "_")
+                value = _cfg_get(cfg, key)
+                with Horizontal(classes="set_row"):
+                    yield Label(
+                        label + ("  [restart]" if extra.get("restart") else ""), classes="set_label"
+                    )
+                    if kind == "bool":
+                        yield Switch(value=bool(value), id=wid)
+                    elif kind == "choice":
+                        yield Select(
+                            [(o, o) for o in extra["options"]],
+                            value=value if value in extra["options"] else extra["options"][0],
+                            allow_blank=False,
+                            id=wid,
+                        )
+                    else:
+                        shown = (
+                            ", ".join(value)
+                            if isinstance(value, list)
+                            else ("" if value is None else str(value))
+                        )
+                        yield Input(value=shown, id=wid, classes="set_input")
+        yield Static("", id="set_status")
+        yield Footer()
+
+    def _status(self, msg: str, style: str = "") -> None:
+        self.query_one("#set_status", Static).update(Text(msg, style=style))
+
+    def collect(self) -> Config:
+        """A fresh Config from the form; ValueError names the first bad field."""
+        from copy import deepcopy
+
+        cfg = deepcopy(self.curator.config)
+        for _sec, key, _label, kind, _extra in SETTINGS:
+            w = self.query_one("#set_" + key.replace(".", "_"))
+            raw = w.value  # Switch / Select / Input all expose .value
+            _cfg_set(cfg, key, parse_setting(kind, raw, key))
+        return cfg
+
+    def action_save(self) -> None:
+        try:
+            cfg = self.collect()
+        except ValueError as e:
+            self._status(str(e), "bold red")
+            return
+        restart = [
+            key
+            for _sec, key, _label, _kind, extra in SETTINGS
+            if extra.get("restart") and _cfg_get(cfg, key) != _cfg_get(self.curator.config, key)
+        ]
+        try:
+            path = config_mod.save(cfg)
+        except OSError as e:
+            self._status(f"could not write config: {e}", "bold red")
+            return
+        self.curator.apply_config(cfg)
+        note = f"saved {path}" + (f"   restart for: {', '.join(restart)}" if restart else "")
+        self.curator.notify(note, title="SETTINGS", timeout=8)
+        self.dismiss(None)
+
+
 class CuratorApp(App[None]):
     TITLE = "KRYSTAL CURATOR"
     CSS_PATH = "tui.tcss"
@@ -1270,6 +1449,7 @@ class CuratorApp(App[None]):
         Binding("W", "watch_only", "★ONLY"),
         Binding("P", "positions", "MY POS"),
         Binding("L", "leaderboard", "LEADERBOARD"),
+        Binding("comma", "settings", "SETTINGS", key_display=","),
         Binding("o", "open_url", "OPEN"),
         Binding("l", "links", "LINKS"),
         Binding("e", "export_csv", "CSV"),
@@ -2056,6 +2236,38 @@ class CuratorApp(App[None]):
 
     def action_leaderboard(self) -> None:
         self.push_screen(LeaderboardScreen(self))
+
+    def action_settings(self) -> None:
+        self.push_screen(SettingsScreen(self))
+
+    def apply_config(self, cfg: Config) -> None:
+        """Take a saved configuration live: screener filters and size re-rank at once,
+        refresh timer and alert thresholds switch over, the agent reads its section on
+        its next task. Chain / feed / renderer need a restart and are left as they are."""
+        old = self.config
+        self.config = cfg
+        self.profile = PROFILES.get(cfg.profile, self.profile)
+        self.monitor.profile = self.profile
+        self.monitor.alerts = cfg.alerts
+        self.quote = cfg.quote_or_none
+        self.quote_default = cfg.quote_or_none or "USDG"
+        self.available_protocols = sorted(cfg.protocols)
+        if self.protocol_filter not in (None, *self.available_protocols):
+            self.protocol_filter = None
+        self.position_size = cfg.size
+        self.wallet = cfg.wallet or api.wallet()
+        if cfg.refresh != old.refresh:
+            if self._timer is not None:
+                self._timer.stop()
+                self._timer = None
+            self.auto = cfg.refresh > 0
+            self.refresh_seconds = cfg.refresh if cfg.refresh > 0 else 300
+            if self.auto:
+                self._timer = self.set_interval(self.refresh_seconds, self._auto_tick)
+        if cfg.reconcile != old.reconcile or cfg.protocols != old.protocols:
+            self._fetch()
+        elif self.pools:
+            self._rebuild()
 
     def _on_positions_closed(self, pool_key: str | None) -> None:
         """Jump the screener to the pool the user picked in the positions view."""

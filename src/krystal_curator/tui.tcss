@@ -273,3 +273,65 @@ LeaderboardScreen {
     color: #ffb000;
     padding: 0 1;
 }
+
+SettingsScreen {
+    background: #000000;
+}
+#set_topbar {
+    height: 1;
+    background: #ff9a00;
+    color: #000000;
+    text-style: bold;
+    padding: 0 1;
+}
+#set_body {
+    height: 1fr;
+    padding: 0 2;
+}
+.set_section {
+    height: 1;
+    margin-top: 1;
+    color: #ffb000;
+    text-style: bold;
+}
+.set_row {
+    height: 3;
+    align-vertical: middle;
+}
+.set_label {
+    width: 46;
+    height: 3;
+    content-align: left middle;
+    color: #d8d8d8;
+}
+.set_input {
+    width: 1fr;
+    max-width: 90;
+    background: #000000;
+    color: #ffffff;
+    border: solid #a05e00;
+}
+.set_input:focus {
+    border: solid #ff9a00;
+}
+#set_body Select {
+    width: 30;
+}
+#set_body Select > SelectCurrent {
+    background: #000000;
+    color: #ffffff;
+    border: solid #a05e00;
+}
+#set_body Switch {
+    background: #000000;
+    border: solid #a05e00;
+}
+#set_body Switch.-on > .switch--slider {
+    color: #ff9a00;
+}
+#set_status {
+    height: 1;
+    background: #101010;
+    color: #ffb000;
+    padding: 0 1;
+}

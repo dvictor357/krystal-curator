@@ -36,3 +36,20 @@ def test_templates_parse_and_do_not_overwrite(tmp_path, monkeypatch):
     cfg = load()
     assert cfg.source == tmp_path / "config.toml" and cfg.size == 50_000
     assert write_templates(tmp_path) == []
+
+
+def test_dump_and_save_round_trip(tmp_path):
+    from krystal_curator.config import Config, load, save
+
+    cfg = Config()
+    cfg.protocols = ["uniswapv4"]
+    cfg.digest_hour = 3
+    cfg.agent.model = "~/m.gguf"
+    cfg.alerts.edge_sigma = 0.7
+    path = save(cfg, tmp_path / "config.toml")
+    back = load(path)
+    assert back.protocols == ["uniswapv4"] and back.digest_hour == 3
+    assert back.agent.model.endswith("/m.gguf") and back.alerts.edge_sigma == 0.7
+    assert cfg.source == path
+    cfg.digest_hour = None
+    assert "digest_hour" not in (save(cfg, path)).read_text()

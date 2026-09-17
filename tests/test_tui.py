@@ -338,3 +338,39 @@ async def test_leaderboard_screen_ranks_and_reviews(app, monkeypatch, tmp_path):
         await pilot.press("escape")
         await pilot.pause(0.2)
         assert type(app.screen).__name__ != "LeaderboardScreen"
+
+
+@pytest.mark.asyncio
+async def test_settings_screen_saves_and_applies(app, monkeypatch, tmp_path):
+    """`,` opens the form; ctrl+s writes config.toml and takes the live fields over."""
+    monkeypatch.chdir(tmp_path)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _loaded(app, pilot)
+        await pilot.press("comma")
+        await pilot.pause(0.3)
+        assert type(app.screen).__name__ == "SettingsScreen"
+        assert app.screen.query_one("#set_profile").value == "balanced"
+        app.screen.query_one("#set_size").value = "12345"
+        app.screen.query_one("#set_profile").value = "aggressive"
+        app.screen.query_one("#set_agent_enabled").value = True
+        app.screen.query_one("#set_agent_max_steps").value = "x"  # invalid: stays open
+        await pilot.press("ctrl+s")
+        await pilot.pause(0.3)
+        assert type(app.screen).__name__ == "SettingsScreen"
+        assert "agent.max_steps" in _plain(app.screen.query_one("#set_status"))
+        app.screen.query_one("#set_agent_max_steps").value = "5"
+        await pilot.press("ctrl+s")
+        for _ in range(20):
+            await pilot.pause(0.1)
+            if type(app.screen).__name__ != "SettingsScreen":
+                break
+        assert app.position_size == 12345 and app.profile.key == "aggressive"
+        assert app.config.agent.enabled and app.config.agent.max_steps == 5
+        text = (tmp_path / "config.toml").read_text()
+        assert 'profile = "aggressive"' in text and "max_steps = 5" in text
+        assert app.config.source == tmp_path / "config.toml"
+        await pilot.press("comma")
+        await pilot.pause(0.3)
+        await pilot.press("escape")  # cancel: nothing changes
+        await pilot.pause(0.2)
+        assert type(app.screen).__name__ != "SettingsScreen"

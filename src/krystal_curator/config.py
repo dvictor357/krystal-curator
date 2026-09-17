@@ -236,6 +236,46 @@ KRYSTAL_WALLET=0x
 """
 
 
+def _toml_value(v: Any) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int | float):
+        return repr(v) if isinstance(v, float) else str(v)
+    if isinstance(v, list):
+        return "[" + ", ".join(_toml_value(x) for x in v) + "]"
+    if isinstance(v, Path):
+        v = str(v)
+    return '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def dump(cfg: Config) -> str:
+    """The configuration as TOML: every top-level field, then `[alerts]` and `[agent]`.
+    Comments from a hand-written file are not kept — `save` writes what the settings
+    screen holds, nothing else."""
+    lines = ["# krystal-curator configuration, written by the settings screen.", ""]
+    for f in fields(Config):
+        if f.name in ("source", "alerts", "agent"):
+            continue
+        v = getattr(cfg, f.name)
+        if v is None:
+            continue  # optional and unset (digest_hour)
+        lines.append(f"{f.name} = {_toml_value(v)}")
+    for table in ("alerts", "agent"):
+        lines += ["", f"[{table}]"]
+        sub = getattr(cfg, table)
+        for f in fields(sub):
+            lines.append(f"{f.name} = {_toml_value(getattr(sub, f.name))}")
+    return "\n".join(lines) + "\n"
+
+
+def save(cfg: Config, path: Path | None = None) -> Path:
+    """Write `cfg` to `path`, else to the file it was loaded from, else `./config.toml`."""
+    target = Path(path) if path else (cfg.source or Path.cwd() / FILE_NAME)
+    target.write_text(dump(cfg), encoding="utf-8")
+    cfg.source = target
+    return target
+
+
 def write_templates(directory: Path, *, force: bool = False) -> list[Path]:
     """Write config.toml and .env templates; returns the files created."""
     out: list[Path] = []
