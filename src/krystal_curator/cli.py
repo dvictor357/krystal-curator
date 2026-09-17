@@ -11,7 +11,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from . import api, net, notify
+from . import api, leaderboard, net, notify
 from .config import Config
 from .config import load as load_config
 from .env import load_dotenv
@@ -163,6 +163,48 @@ def build_parser(cfg: Config) -> argparse.ArgumentParser:
         "--no-raw", action="store_true", help="omit verbatim API responses from the JSON"
     )
     vr.add_argument("--quiet", action="store_true", help="only print the written paths")
+
+    lb = sub.add_parser(
+        "vault-leaderboard",
+        help="every public AutoFarm vault on the chain: who earns on their capital, "
+        "which vaults are copy candidates, optionally reviewed",
+    )
+    lb.add_argument("--chain", type=int, default=cfg.chain, help=f"chainId (default {cfg.chain})")
+    lb.add_argument("--top", type=int, default=20, help="rows per table (default 20)")
+    lb.add_argument(
+        "--sort",
+        choices=leaderboard.SORTS,
+        default="roi",
+        help="roi = annualised pnl / deposited, pnl = $, apr = feed fee APR, "
+        "30d = earning30d / tvl (default roi)",
+    )
+    lb.add_argument(
+        "--min-tvl",
+        type=float,
+        default=leaderboard.MIN_TVL,
+        help=f"candidate floor on TVL (default {leaderboard.MIN_TVL:,.0f})",
+    )
+    lb.add_argument(
+        "--min-age",
+        type=float,
+        default=None,
+        help="candidate floor on age in days (default: the evaluation's evidence floor)",
+    )
+    lb.add_argument(
+        "--review",
+        type=int,
+        default=0,
+        metavar="N",
+        help="run the full vault-review evaluation on the top N candidates (≈5 requests each)",
+    )
+    lb.add_argument(
+        "--write",
+        action="store_true",
+        help="with --review: also write each reviewed vault's report to --out",
+    )
+    lb.add_argument(
+        "--out", type=Path, default=Path("reports"), help="report directory (default reports/)"
+    )
 
     init = sub.add_parser("init", help="write config.toml and .env templates here")
     init.add_argument("--force", action="store_true", help="overwrite existing files")
@@ -617,6 +659,152 @@ def run_vault_review(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_vault_leaderboard(args: argparse.Namespace) -> int:
+    from dataclasses import replace
+
+    from . import vault_eval
+    from . import vault_review as vr
+    from .vaults import fetch_public_vaults
+
+    con = Console(width=None if sys.stdout.isatty() else 170)
+    try:
+        vaults = fetch_public_vaults(args.chain)
+    except (api.KrystalError, net.HttpError) as e:
+        con.print(f"[red]{net.redact(str(e))}[/red]")
+        return 1
+    lim = vault_eval.DEFAULT_LIMITS
+    if args.min_age is not None:
+        lim = replace(lim, min_age_days=args.min_age)
+    board = leaderboard.rank(vaults, sort=args.sort, lim=lim, min_tvl=args.min_tvl)
+    if not board.vaults:
+        con.print(f"[yellow]no public AutoFarm vault on chain {args.chain}[/yellow]")
+        return 1
+
+    def pct(x: float | None, digits: int = 0) -> str:
+        return "-" if x is None else f"{x:+,.{digits}f}"
+
+    o = Table(
+        title=f"owners  chain {args.chain}  {len(board.owners)} owners of {board.total} vaults  "
+        f"sort {args.sort}",
+        header_style="bold #ffb000",
+        border_style="#a05e00",
+        box=box.SIMPLE_HEAD,
+        pad_edge=False,
+    )
+    for c in (
+        "#",
+        "OWNER",
+        "VAULTS",
+        "DEPOSITED",
+        "TVL",
+        "PNL",
+        "ROI%",
+        "FEES",
+        "30D",
+        "COPIES",
+        "BEST VAULT",
+    ):
+        o.add_column(c, justify="left" if c in ("OWNER", "BEST VAULT") else "right")
+    for i, ow in enumerate(board.owners[: args.top], 1):
+        o.add_row(
+            str(i),
+            ow.label
+            + ("" if ow.verified in ("", "UNCONNECTED") else f" [dim]{ow.verified.lower()}[/dim]"),
+            str(len(ow.vaults)),
+            f"{ow.deposited:,.0f}",
+            f"{ow.tvl:,.0f}",
+            pct(ow.pnl),
+            pct(ow.roi_pct, 1),
+            f"{ow.fees:,.0f}",
+            pct(ow.earning_30d),
+            str(ow.copies) if ow.copies else "-",
+            ow.best.vault.name[:28],
+        )
+    con.print(o)
+    con.print(
+        "[dim]ROI% = Σpnl / Σlifetime deposits (not annualised); owners keep their losers[/dim]\n"
+    )
+
+    t = Table(
+        title=f"vaults  {len(board.candidates)} copy candidates of {board.total}  "
+        f"(age ≥ {lim.min_age_days:g}d, tvl ≥ {args.min_tvl:,.0f}, pnl > 0, tx costs ≤ "
+        f"{leaderboard.MAX_COST_SHARE * 100:.0f}% of fees, agent on)",
+        header_style="bold #ffb000",
+        border_style="#a05e00",
+        box=box.SIMPLE_HEAD,
+        pad_edge=False,
+    )
+    for c in (
+        "#",
+        "VAULT",
+        "OWNER",
+        "AGE",
+        "TVL",
+        "PNL",
+        "ROI%",
+        "ROI%/Y",
+        "FEE APR",
+        "30D%",
+        "COST%",
+        "USERS",
+        "COPIES",
+        "RISK",
+        "COPY?",
+    ):
+        t.add_column(c, justify="left" if c in ("VAULT", "OWNER", "RISK", "COPY?") else "right")
+    shown = board.vaults[: args.top]
+    for i, r in enumerate(shown, 1):
+        v = r.vault
+        t.add_row(
+            str(i),
+            v.name[:28],
+            v.owner_name[:14] or f"{v.owner[:6]}…{v.owner[-4:]}",
+            f"{v.age_days:.0f}d",
+            f"{v.tvl:,.0f}",
+            pct(v.pnl),
+            pct(r.roi_pct, 1),
+            pct(r.roi_ann_pct),
+            f"{v.fee_apr:,.0f}%",
+            pct(r.yield_30d_pct, 1),
+            "-" if r.cost_share is None else f"{r.cost_share * 100:.0f}",
+            str(v.total_users),
+            str(v.copy_count) if v.copy_count else "-",
+            v.risk.lower() or "-",
+            "[green]yes[/green]" if r.candidate else f"[dim]{r.why_not[0]}[/dim]",
+        )
+    con.print(t)
+    con.print("[dim]URLs:[/dim]")
+    for i, r in enumerate(shown, 1):
+        con.print(f"[dim]{i:>3}[/dim] {r.vault.url}")
+
+    if args.review <= 0:
+        return 0
+    picks = board.candidates[: args.review]
+    if not picks:
+        con.print("[yellow]no candidate to review; loosen --min-age / --min-tvl[/yellow]")
+        return 1
+    con.print(f"\n[bold #ffb000]review[/]: top {len(picks)} candidates")
+    rt = Table(header_style="bold #ffb000", box=box.SIMPLE_HEAD, pad_edge=False)
+    for c in ("VAULT", "VERDICT", "WHY"):
+        rt.add_column(c)
+    color = {"worth_testing": "green", "watch": "yellow", "avoid": "red"}
+    for r in picks:
+        v = r.vault
+        try:
+            rv = vr.fetch_review(v.chain_id, v.address)
+        except (api.KrystalError, net.HttpError) as e:
+            rt.add_row(v.name[:28], "[red]error[/red]", net.redact(str(e))[:80])
+            continue
+        ev = vault_eval.evaluate(rv)
+        why = "; ".join(ev.reasons[:2])
+        if args.write:
+            md, _ = vr.write_review(rv, args.out, evaluation=ev)
+            why += f"  [dim]{md}[/dim]"
+        rt.add_row(v.name[:28], f"[{color.get(ev.verdict, 'dim')}]{ev.verdict}[/]", why)
+    con.print(rt)
+    return 0
+
+
 def run_tui(args: argparse.Namespace, cfg: Config) -> int:
     from .tui import CuratorApp
 
@@ -665,6 +853,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_backtest(args)
     if args.cmd == "vault-review":
         return run_vault_review(args)
+    if args.cmd == "vault-leaderboard":
+        return run_vault_leaderboard(args)
     if args.cmd == "watch":
         from .daemon import run_watch
 

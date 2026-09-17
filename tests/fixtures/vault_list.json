@@ -1,0 +1,418 @@
+[
+ {
+  "pagination": {
+   "totalData": 6,
+   "totalPage": 2,
+   "page": 1,
+   "perPage": 4
+  },
+  "data": [
+   {
+    "chainId": 4663,
+    "vaultAddress": "0xe2859517ace765a10ad9c191cc6a33c73f9a05c3",
+    "ownerAddress": "",
+    "owner": {
+     "address": "0xdb03585d268368a99b8704c55187d00693a9127e",
+     "followers": 0,
+     "displayName": "",
+     "verifiedLevel": "UNCONNECTED"
+    },
+    "name": "Naabu2",
+    "vaultType": "autofarm",
+    "feeGenerated": 6867.075006920163,
+    "pnl": 3284.466796875,
+    "tvl": 2432.243957331587,
+    "apr": 28.202571868896484,
+    "feeApr": 28.20257261183018,
+    "ageInSecond": 3026862,
+    "totalUser": 1,
+    "allowDeposit": false,
+    "earning24h": 69.81479332895651,
+    "earning30d": 736.6793307327741,
+    "riskScore": "HIGH",
+    "userPerformance": {
+     "value": 2432.243957331587,
+     "totalDepositValue": 57064.15760705696,
+     "totalWithdrawValue": 51331.79255844471
+    },
+    "vaultSecurities": [
+     {
+      "value": "IL_EXTRA",
+      "score": 0,
+      "additionalData": {}
+     },
+     {
+      "value": "PRICE_IMPACT_HIGH",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "POOL_LIST_CUSTOM",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "TRUSTED_OWNER_ANON",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "TOKEN_SECURITY_NEUTRAL",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "OWNER_SHARE_HIGH",
+      "score": 3,
+      "additionalData": {}
+     }
+    ],
+    "isAgentActivated": true,
+    "maxTotalCost": 651.4013421514493,
+    "minPnl": 2633.0654814264317,
+    "copyCount": 13,
+    "vaultOwnerFeeBasisPoint": 0
+   },
+   {
+    "chainId": 4663,
+    "vaultAddress": "0x15eb4216c857e23f304c191d2c1a265a62c6434e",
+    "ownerAddress": "",
+    "owner": {
+     "address": "0xd8dea9594ab5de13957eaba20687533231e362e3",
+     "followers": 0,
+     "displayName": "",
+     "verifiedLevel": "UNCONNECTED"
+    },
+    "name": "Es RH bank",
+    "vaultType": "autofarm",
+    "feeGenerated": 6891.001643938259,
+    "pnl": 2333.67626953125,
+    "tvl": 5151.657618953093,
+    "apr": 22.534181594848633,
+    "feeApr": 22.53418182751951,
+    "ageInSecond": 1837476,
+    "totalUser": 1,
+    "allowDeposit": false,
+    "earning24h": 145.72655493946786,
+    "earning30d": 1134.6856433865394,
+    "riskScore": "HIGH",
+    "userPerformance": {
+     "value": 5151.657618953093,
+     "totalDepositValue": 56949.15354177981,
+     "totalWithdrawValue": 47677.070336413846
+    },
+    "vaultSecurities": [
+     {
+      "value": "IL_EXTRA",
+      "score": 0,
+      "additionalData": {}
+     },
+     {
+      "value": "PRICE_IMPACT_HIGH",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "POOL_LIST_CUSTOM",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "TRUSTED_OWNER_ANON",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "TOKEN_SECURITY_NEUTRAL",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "OWNER_SHARE_HIGH",
+      "score": 3,
+      "additionalData": {}
+     }
+    ],
+    "isAgentActivated": true,
+    "maxTotalCost": 692.1687869527422,
+    "minPnl": 1641.5074615976728,
+    "copyCount": 4,
+    "vaultOwnerFeeBasisPoint": 0
+   },
+   {
+    "chainId": 4663,
+    "vaultAddress": "0x6b35231b3ecb4d55126b81f83d2522e708ceceb8",
+    "ownerAddress": "",
+    "owner": {
+     "address": "0xd8dea9594ab5de13957eaba20687533231e362e3",
+     "followers": 0,
+     "displayName": "",
+     "verifiedLevel": "UNCONNECTED"
+    },
+    "name": "Vault Es raptor",
+    "vaultType": "autofarm",
+    "feeGenerated": 4057.7101081229703,
+    "pnl": 1529.58935546875,
+    "tvl": 2944.1053770960484,
+    "apr": 23.160017013549805,
+    "feeApr": 23.160017600453944,
+    "ageInSecond": 1902440,
+    "totalUser": 1,
+    "allowDeposit": false,
+    "earning24h": 88.0428880643558,
+    "earning30d": 838.8457278558658,
+    "riskScore": "HIGH",
+    "userPerformance": {
+     "value": 2944.1053770960484,
+     "totalDepositValue": 44086.96169708857,
+     "totalWithdrawValue": 38792.61225221289
+    },
+    "vaultSecurities": [
+     {
+      "value": "IL_EXTRA",
+      "score": 0,
+      "additionalData": {}
+     },
+     {
+      "value": "PRICE_IMPACT_HIGH",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "POOL_LIST_CUSTOM",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "TRUSTED_OWNER_ANON",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "TOKEN_SECURITY_NEUTRAL",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "OWNER_SHARE_HIGH",
+      "score": 3,
+      "additionalData": {}
+     }
+    ],
+    "isAgentActivated": true,
+    "maxTotalCost": 439.1119441623476,
+    "minPnl": 1090.4774365787719,
+    "copyCount": 0,
+    "vaultOwnerFeeBasisPoint": 0
+   },
+   {
+    "chainId": 4663,
+    "vaultAddress": "0xca9ec3f3462225d6cc1de51f3cc03e7b9c8e8aac",
+    "ownerAddress": "",
+    "owner": {
+     "address": "0x92631eccfd5fbc149382bb97bf82b7a4161b91f5",
+     "followers": 0,
+     "displayName": "",
+     "verifiedLevel": "UNCONNECTED"
+    },
+    "name": "USDG/SHROOM Farm",
+    "vaultType": "autofarm",
+    "feeGenerated": 112.50641897865404,
+    "pnl": 140.23358154296875,
+    "tvl": 1080.0998158603766,
+    "apr": 25.33121109008789,
+    "feeApr": 25.331210828120753,
+    "ageInSecond": 242772,
+    "totalUser": 1,
+    "allowDeposit": false,
+    "earning24h": 28.803074828715324,
+    "earning30d": 864.0922448614597,
+    "riskScore": "HIGH",
+    "userPerformance": {
+     "value": 1080.0998158603766,
+     "totalDepositValue": 934.593802273343,
+     "totalWithdrawValue": 0
+    },
+    "vaultSecurities": [
+     {
+      "value": "IL_EXTRA",
+      "score": 0,
+      "additionalData": {}
+     },
+     {
+      "value": "PRICE_IMPACT_HIGH",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "POOL_LIST_CUSTOM",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "TRUSTED_OWNER_ANON",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "TOKEN_SECURITY_NEUTRAL",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "OWNER_SHARE_HIGH",
+      "score": 3,
+      "additionalData": {}
+     }
+    ],
+    "isAgentActivated": false,
+    "maxTotalCost": 0,
+    "minPnl": 140.23358154296875,
+    "copyCount": 0,
+    "vaultOwnerFeeBasisPoint": 0
+   }
+  ]
+ },
+ {
+  "pagination": {
+   "totalData": 6,
+   "totalPage": 2,
+   "page": 2,
+   "perPage": 4
+  },
+  "data": [
+   {
+    "chainId": 4663,
+    "vaultAddress": "0x3c6e3efcc9d49ee121ceae55c3bef54006984df5",
+    "ownerAddress": "",
+    "owner": {
+     "address": "0xb0662733e2af03509136aceb998bad1a12f0d935",
+     "followers": 0,
+     "displayName": "",
+     "verifiedLevel": "UNCONNECTED"
+    },
+    "name": "coba copy Uncle bear",
+    "vaultType": "autofarm",
+    "feeGenerated": 42.6522202805807,
+    "pnl": 26.629438400268555,
+    "tvl": 557.1393023356991,
+    "apr": 5.677481174468994,
+    "feeApr": 5.677481040804135,
+    "ageInSecond": 566571,
+    "totalUser": 1,
+    "allowDeposit": false,
+    "earning24h": 9.076250502901573,
+    "earning30d": 148.30480818928586,
+    "riskScore": "HIGH",
+    "userPerformance": {
+     "value": 557.1393023356991,
+     "totalDepositValue": 1052.688936110418,
+     "totalWithdrawValue": 492.25142397954824
+    },
+    "vaultSecurities": [
+     {
+      "value": "IL_EXTRA",
+      "score": 0,
+      "additionalData": {}
+     },
+     {
+      "value": "PRICE_IMPACT_HIGH",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "POOL_LIST_CUSTOM",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "TRUSTED_OWNER_ANON",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "TOKEN_SECURITY_NEUTRAL",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "OWNER_SHARE_HIGH",
+      "score": 3,
+      "additionalData": {}
+     }
+    ],
+    "isAgentActivated": true,
+    "maxTotalCost": 2.5771222996607372,
+    "minPnl": 24.052315206538147,
+    "copyCount": 0,
+    "vaultOwnerFeeBasisPoint": 0
+   },
+   {
+    "chainId": 4663,
+    "vaultAddress": "0x0e8c62e9765375ac912a3e5f0e35e872cc1ffb56",
+    "ownerAddress": "",
+    "owner": {
+     "address": "0x4ce3a95947aff94287764eb6c61b77c232121e58",
+     "followers": 0,
+     "displayName": "",
+     "verifiedLevel": "UNCONNECTED"
+    },
+    "name": "Champ V3",
+    "vaultType": "autofarm",
+    "feeGenerated": 1105.061444206605,
+    "pnl": -121.17423248291016,
+    "tvl": 1807.4588344506242,
+    "apr": 21.910980224609375,
+    "feeApr": 21.910979498278827,
+    "ageInSecond": 993902,
+    "totalUser": 1,
+    "allowDeposit": false,
+    "earning24h": 79.61468181102975,
+    "earning30d": 1291.0151126710396,
+    "riskScore": "HIGH",
+    "userPerformance": {
+     "value": 1807.4588344506242,
+     "totalDepositValue": 14447.330507335968,
+     "totalWithdrawValue": 11439.79765971481
+    },
+    "vaultSecurities": [
+     {
+      "value": "IL_EXTRA",
+      "score": 0,
+      "additionalData": {}
+     },
+     {
+      "value": "PRICE_IMPACT_HIGH",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "POOL_LIST_CUSTOM",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "TRUSTED_OWNER_ANON",
+      "score": 1,
+      "additionalData": {}
+     },
+     {
+      "value": "TOKEN_SECURITY_NEUTRAL",
+      "score": 2,
+      "additionalData": {}
+     },
+     {
+      "value": "OWNER_SHARE_HIGH",
+      "score": 3,
+      "additionalData": {}
+     }
+    ],
+    "isAgentActivated": true,
+    "maxTotalCost": 69.43571177679738,
+    "minPnl": -190.6099423523589,
+    "copyCount": 0,
+    "vaultOwnerFeeBasisPoint": 0
+   }
+  ]
+ }
+]

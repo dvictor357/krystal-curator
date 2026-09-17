@@ -44,6 +44,13 @@ class Vault:
     securities: list[str] = field(default_factory=list)  # vaultSecurities[].value
     max_total_cost: float = 0.0  # `maxTotalCost`: transaction costs spent (agent prompt label)
     min_pnl: float = 0.0  # `minPnl` as served; semantics unverified
+    # public-list facts (`fetch_public_vaults`), unknown → 0 / ""
+    fee_apr: float = 0.0  # `feeApr`, percent (feed fraction × 100); `apr` includes farm rewards
+    copy_count: int = 0  # `copyCount`: vaults created by copying this one
+    owner_name: str = ""  # owner.displayName, else twitterUsername
+    owner_verified: str = ""  # owner.verifiedLevel (UNCONNECTED / ...)
+    owner_followers: int = 0
+    owner_fee_bps: int = 0  # `vaultOwnerFeeBasisPoint`: what the owner takes from depositors
 
     @property
     def url(self) -> str:
@@ -72,6 +79,7 @@ def _get(url: str, params: dict | None = None) -> dict | list:
 
 def _parse_vault(d: dict, *, owned: bool) -> Vault:
     up = d.get("userPerformance") or {}
+    owner = d.get("owner") or {}
     return Vault(
         chain_id=int(d.get("chainId") or 0),
         address=(d.get("vaultAddress") or "").lower(),
@@ -89,13 +97,19 @@ def _parse_vault(d: dict, *, owned: bool) -> Vault:
         my_value=fnum(up.get("value")),
         my_deposit=fnum(up.get("totalDepositValue")),
         my_withdrawn=fnum(up.get("totalWithdrawValue")),
-        owner=((d.get("owner") or {}).get("address") or d.get("ownerAddress") or "").lower(),
+        owner=(owner.get("address") or d.get("ownerAddress") or "").lower(),
         total_users=int(d.get("totalUser") or 0),
         allow_deposit=bool(d.get("allowDeposit")),
         agent_activated=bool(d.get("isAgentActivated")),
         securities=[x.get("value") for x in d.get("vaultSecurities") or [] if x.get("value")],
         max_total_cost=fnum(d.get("maxTotalCost")),
         min_pnl=fnum(d.get("minPnl")),
+        fee_apr=fnum(d.get("feeApr")) * 100,
+        copy_count=int(d.get("copyCount") or 0),
+        owner_name=owner.get("displayName") or owner.get("twitterUsername") or "",
+        owner_verified=owner.get("verifiedLevel") or "",
+        owner_followers=int(owner.get("followers") or 0),
+        owner_fee_bps=int(d.get("vaultOwnerFeeBasisPoint") or 0),
     )
 
 
@@ -186,3 +200,33 @@ def fetch_vaults(wallet: str, *, chain_id: int | None = None) -> list[Vault]:
         if isinstance(detail, dict):
             _attach_strategies(v, detail)
     return sorted(seen.values(), key=lambda v: v.tvl, reverse=True)
+
+
+def fetch_public_vaults(
+    chain_id: int, *, autofarm: bool = True, per_page: int = 100
+) -> list[Vault]:
+    """Every public vault on a chain, no wallet: the discovery feed behind the vault
+    leaderboard. `chainIds` is the working filter (`chainId` is silently ignored). One
+    request per page, sequential. Strategies are not served here (`strategies` is empty):
+    `fetch_vault` has them. `userPerformance` on this list is the vault's aggregate
+    (every depositor), so `my_deposit` / `my_withdrawn` read as lifetime deposits /
+    withdrawals of the vault.
+    """
+    params = {
+        "chainIds": chain_id,
+        "isAutoFarmVault": "true" if autofarm else "false",
+        "perPage": per_page,
+    }
+    out: list[Vault] = []
+    page, pages = 1, 1
+    while page <= pages:
+        data = _get(VAULTS, {**params, "page": page})
+        if not isinstance(data, dict):
+            raise KrystalError("vaults: unexpected list payload")
+        for d in data.get("data") or []:
+            v = _parse_vault(d, owned=False)
+            if v.chain_id == chain_id:
+                out.append(v)
+        pages = int((data.get("pagination") or {}).get("totalPage") or 1)
+        page += 1
+    return out

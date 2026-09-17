@@ -26,7 +26,7 @@ Precedence: **CLI flag > env var (`KRYSTAL_*`) > `config.toml` > default**. Secr
 `--config`, `$KRYSTAL_CONFIG`, `./config.toml`, then the user config dir.
 `KRYSTAL_DATA_DIR` moves the sqlite db / cache (used by the container).
 
-Commands: `tui` (default) · `scan` · `watch` · `setup` · `backtest` · `vault-review` · `init` · `config` · `status`.
+Commands: `tui` (default) · `scan` · `watch` · `setup` · `backtest` · `vault-review` · `vault-leaderboard` · `init` · `config` · `status`.
 
 ```sh
 uv run krystal-curator --profile aggressive
@@ -265,6 +265,37 @@ coverage, failed sources). The verdict is a rule, not a score: a platform-level 
 `avoid` whatever the APR, thin evidence is `insufficient_data`, and only a vault whose
 fee record pays for its price moves is `worth_testing` (with the instruction-level
 adaptations listed); the rest is `watch`.
+
+## Vault leaderboard (`vault-leaderboard`)
+
+```sh
+uv run krystal-curator vault-leaderboard                 # every public AutoFarm vault on the chain
+uv run krystal-curator vault-leaderboard --sort pnl --top 30
+uv run krystal-curator vault-leaderboard --review 5 --write   # evaluate the top 5 candidates, write reports
+```
+
+Two questions, two tables, from the public vault list (`/all/v1/vaults?chainIds=`, no
+wallet, no key). **Owners**: who is making money on the capital they run — every vault
+of an owner aggregated, losers included, `ROI% = Σpnl / Σlifetime deposits`; owners with
+less than `--min-tvl` (500 $) deposited are not ranked, a test balance is not a track
+record. **Vaults**: copy candidates first, then the rest with the first rule they fail
+next to them. A candidate is ≥ 14 days old (the evaluation's evidence floor,
+`--min-age`), holds ≥ 500 $ (`--min-tvl`), has a positive pnl, has generated fees with
+transaction costs at most half of them, and has its agent on (so there are settings to
+copy). `--sort` picks `roi` (annualised pnl / deposited, default), `pnl` ($), `apr`
+(the feed's fee APR) or `30d` (earning30d / TVL). `COPIES` is Krystal's own
+`copyCount`, how many vaults were created by copying that one.
+
+`--review N` runs the full `vault-review` evaluation on the top N candidates (≈ 5
+requests each) and prints the verdict with its first reasons; `--write` also writes
+each report to `--out`. The leaderboard ranks, the review decides: a vault with the best
+ROI on the chain still comes back `avoid` when its permissions cannot exit or its range
+floor is a platform setting below ours.
+
+Numbers here are comparisons, not P&L: the feed's `pnl` does not reconcile with
+value + withdrawn − deposited, so what it nets (costs? pending fees?) is unknown;
+`userPerformance` on the public list is the vault's aggregate, not one depositor's;
+lifetime deposits include re-deposits, so ROI is a floor on churny vaults.
 
 ## Assumptions about the Krystal API
 
