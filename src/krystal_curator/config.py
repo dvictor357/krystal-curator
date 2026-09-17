@@ -39,6 +39,30 @@ class Alerts:
 
 
 @dataclass(slots=True)
+class Agent:
+    """Local-LLM addon (`agent/`): off unless `enabled`; nothing else changes without it.
+    `base_url` set → attach to a running llama-server; empty → spawn one from `model`."""
+
+    enabled: bool = False
+    model: str = ""  # path to a GGUF, e.g. ~/.lmstudio/models/openbmb/MiniCPM5-2B-GGUF/…Q8_0.gguf
+    base_url: str = ""  # e.g. http://127.0.0.1:8081 to reuse a server you started yourself
+    llama_server: str = "llama-server"  # binary (Homebrew llama.cpp) when we spawn it
+    port: int = 8081
+    ctx: int = 16384  # context window; tool outputs are compacted to fit
+    gpu_layers: int = 99
+    max_steps: int = 8  # tool calls per task before the agent must answer
+    timeout: float = 180.0  # seconds per model call
+    temperature: float = 0.2
+    max_tokens: int = 2000  # per step, reasoning included
+    # thinking tokens per step. 0 = thinking off (`enable_thinking: false` per request,
+    # verified on MiniCPM5). N > 0 = thinking on, capped by `--reasoning-budget N` on the
+    # server we spawn (a per-request budget is not honoured by llama-server 0.4; on an
+    # attached server start it with that flag yourself). Unlimited, a 2B model thinks its
+    # whole `max_tokens` away and returns nothing (verified: 2,000 tokens, empty JSON).
+    reasoning_budget: int = 0
+
+
+@dataclass(slots=True)
 class Config:
     chain: int = ROBINHOOD
     pool_source: str = "krystal"  # krystal | rhpools (chain-indexed, Robinhood only)
@@ -60,6 +84,7 @@ class Config:
     rotate_cost_pct: float = 0.3
     snapshot_days: int = 14
     alerts: Alerts = field(default_factory=Alerts)
+    agent: Agent = field(default_factory=Agent)
     source: Path | None = None  # file it was loaded from, if any
 
     @property
@@ -125,6 +150,17 @@ def _coerce(cfg: Config, name: str, raw: Any) -> Any:
     return str(raw)
 
 
+def _coerce_agent(name: str, raw: Any) -> Any:
+    kind = {f.name: f.type for f in fields(Agent)}[name]
+    if kind == "int":
+        return int(raw)
+    if kind == "float":
+        return float(raw)
+    if kind == "bool":
+        return str(raw).lower() in ("1", "true", "yes", "on")
+    return os.path.expanduser(str(raw)) if name == "model" else str(raw)
+
+
 def load(explicit: str | Path | None = None) -> Config:
     cfg = Config()
     path = find_path(explicit)
@@ -135,7 +171,11 @@ def load(explicit: str | Path | None = None) -> Config:
                 for ak, av in v.items():
                     if hasattr(cfg.alerts, ak):
                         setattr(cfg.alerts, ak, float(av))
-            elif hasattr(cfg, k) and k not in ("source", "alerts"):
+            elif k == "agent" and isinstance(v, dict):
+                for ak, av in v.items():
+                    if hasattr(cfg.agent, ak):
+                        setattr(cfg.agent, ak, _coerce_agent(ak, av))
+            elif hasattr(cfg, k) and k not in ("source", "alerts", "agent"):
                 setattr(cfg, k, _coerce(cfg, k, v))
         cfg.source = path
     for env, name in _ENV_MAP.items():
@@ -175,6 +215,17 @@ edge_sigma = 0.5        # alert when the nearest range edge is closer than this 
 watch_tvl_move = 30     # % TVL move in an hour on a starred pool
 watch_fee_drop = -50    # % fee24 change on a starred pool
 watch_drawdown = -30    # % drawdown on a starred pool
+
+[agent]                 # local-LLM addon: reads reviews, calls our tools, never writes anything
+enabled = false
+model = ""              # GGUF path, e.g. "~/.lmstudio/models/openbmb/MiniCPM5-2B-GGUF/MiniCPM5-2B-Q8_0.gguf"
+# base_url = ""         # "http://127.0.0.1:8081" to reuse a llama-server you run yourself
+# llama_server = "llama-server"   # binary used when we spawn it (brew install llama.cpp)
+# port = 8081
+# ctx = 16384
+# max_steps = 8         # tool calls per task
+# timeout = 180         # seconds per model call
+# reasoning_budget = 0  # 0 = thinking off; N = thinking capped at N tokens (spawned server only)
 """
 
 ENV_TEMPLATE = """# secrets for krystal-curator — never commit this file

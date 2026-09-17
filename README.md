@@ -26,7 +26,7 @@ Precedence: **CLI flag > env var (`KRYSTAL_*`) > `config.toml` > default**. Secr
 `--config`, `$KRYSTAL_CONFIG`, `./config.toml`, then the user config dir.
 `KRYSTAL_DATA_DIR` moves the sqlite db / cache (used by the container).
 
-Commands: `tui` (default) · `scan` · `watch` · `setup` · `backtest` · `vault-review` · `vault-leaderboard` · `init` · `config` · `status`.
+Commands: `tui` (default) · `scan` · `watch` · `setup` · `backtest` · `vault-review` · `vault-leaderboard` · `ask` (local-LLM addon) · `init` · `config` · `status`.
 
 ```sh
 uv run krystal-curator --profile aggressive
@@ -303,6 +303,47 @@ Numbers here are comparisons, not P&L: the feed's `pnl` does not reconcile with
 value + withdrawn − deposited, so what it nets (costs? pending fees?) is unknown;
 `userPerformance` on the public list is the vault's aggregate, not one depositor's;
 lifetime deposits include re-deposits, so ROI is a floor on churny vaults.
+
+## Local-LLM agent addon (`--agent`, `ask`)
+
+Off by default; nothing changes without it. It runs a small local model through
+llama.cpp over the same read-only tools the rest of the program already has, and its
+output is an *opinion next to* the rule verdict, never instead of it.
+
+```toml
+[agent]
+enabled = true
+model = "~/.lmstudio/models/openbmb/MiniCPM5-2B-GGUF/MiniCPM5-2B-Q8_0.gguf"
+# base_url = "http://127.0.0.1:8081"   # reuse a llama-server you started yourself
+```
+
+```sh
+brew install llama.cpp                                        # llama-server binary
+uv run krystal-curator vault-review <URL> --agent             # report gains an "Agent reading" section
+uv run krystal-curator vault-leaderboard --review 5 --agent   # the agent reads each reviewed vault
+uv run krystal-curator ask "which copy candidates were also copied by others, top 3 with numbers?"
+```
+
+How it works: on first use we spawn `llama-server -m <model> --jinja -c 16384` (or attach
+to `base_url`) and stop it on exit. Each step the model returns one JSON object — a
+thought plus either one tool call or the final answer — and llama.cpp's grammar
+enforces that schema token by token, so a 2B model cannot emit an unparsable step. The
+tools: `limits`, `leaderboard`, `vault_review` (compact review + rule verdict + the
+owner's instructions as quoted data), `pool`, `my_positions`. None writes, sends or
+spends. The loop caps tool calls (`max_steps`, 8), executes an identical call only once,
+and when the budget is gone or one tool is called three times it switches to a
+final-only grammar and demands the answer — a small model otherwise loops forever.
+Thinking is off by default (`reasoning_budget = 0`): with it unlimited MiniCPM5-2B
+spends its whole token budget reasoning and returns nothing (verified); a positive
+budget is passed as `--reasoning-budget` to the server we spawn.
+
+What the report gets: a plain-words reading of the owner's instructions and positions,
+`what_to_copy`, `what_to_change` (each with the limit it violates), a draft of the
+instructions rewritten for our limits, verbatim evidence, whether the agent agrees with
+the rule verdict, and a trace of every tool call. Any number in the answer that never
+appeared in a tool result is listed as **unverified** — the model does invent figures.
+Measured on an M-series Mac with the 2B Q8: one vault review ≈ 15–25 s, a leaderboard
+question ≈ 20–40 s.
 
 ## Assumptions about the Krystal API
 

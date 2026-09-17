@@ -589,8 +589,11 @@ def _frac(x: float | None) -> str:
     return "unknown" if x is None else f"{x * 100:g}%"
 
 
-def to_markdown(rv: Review, evaluation: Evaluation | None = None) -> str:
-    """`evaluation` is the vault_eval result (duck-typed to avoid the import cycle)."""
+def to_markdown(
+    rv: Review, evaluation: Evaluation | None = None, agent: Evaluation | None = None
+) -> str:
+    """`evaluation` is the vault_eval result, `agent` the optional agent reading (both
+    duck-typed to avoid the import cycle)."""
     v = rv.vault
     s = rv.settings
     L: list[str] = []
@@ -744,10 +747,19 @@ def to_markdown(rv: Review, evaluation: Evaluation | None = None) -> str:
     add("")
     if evaluation is not None:
         add(evaluation.to_markdown())
+    if agent is not None:
+        add("")
+        add(agent.to_markdown())
     return "\n".join(L)
 
 
-def to_json(rv: Review, *, raw: bool = True, evaluation: Evaluation | None = None) -> str:
+def to_json(
+    rv: Review,
+    *,
+    raw: bool = True,
+    evaluation: Evaluation | None = None,
+    agent: Evaluation | None = None,
+) -> str:
     d = asdict(rv)
     if not raw:
         d.pop("raw", None)
@@ -765,16 +777,23 @@ def to_json(rv: Review, *, raw: bool = True, evaluation: Evaluation | None = Non
     }
     if evaluation is not None:
         d["evaluation"] = evaluation.to_dict()
+    if agent is not None:
+        d["agent"] = agent.to_dict()
     return json.dumps(d, indent=1, ensure_ascii=False)
 
 
 def write_review(
-    rv: Review, out: Path, *, raw: bool = True, evaluation: Evaluation | None = None
+    rv: Review,
+    out: Path,
+    *,
+    raw: bool = True,
+    evaluation: Evaluation | None = None,
+    agent: Evaluation | None = None,
 ) -> tuple[Path, Path]:
     out.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M")
     stem = f"vault_review_{rv.chain_id}_{rv.address[:10]}_{stamp}"
     md, js = out / f"{stem}.md", out / f"{stem}.json"
-    md.write_text(to_markdown(rv, evaluation), encoding="utf-8")
-    js.write_text(to_json(rv, raw=raw, evaluation=evaluation), encoding="utf-8")
+    md.write_text(to_markdown(rv, evaluation, agent), encoding="utf-8")
+    js.write_text(to_json(rv, raw=raw, evaluation=evaluation, agent=agent), encoding="utf-8")
     return md, js

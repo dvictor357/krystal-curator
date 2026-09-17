@@ -163,6 +163,11 @@ def build_parser(cfg: Config) -> argparse.ArgumentParser:
         "--no-raw", action="store_true", help="omit verbatim API responses from the JSON"
     )
     vr.add_argument("--quiet", action="store_true", help="only print the written paths")
+    vr.add_argument(
+        "--agent",
+        action="store_true",
+        help="also let the local-LLM agent read it ([agent] enabled = true in config.toml)",
+    )
 
     lb = sub.add_parser(
         "vault-leaderboard",
@@ -205,6 +210,20 @@ def build_parser(cfg: Config) -> argparse.ArgumentParser:
     lb.add_argument(
         "--out", type=Path, default=Path("reports"), help="report directory (default reports/)"
     )
+    lb.add_argument(
+        "--agent",
+        action="store_true",
+        help="with --review: the local-LLM agent reads each reviewed vault too",
+    )
+
+    ask = sub.add_parser(
+        "ask",
+        help="ask the local-LLM agent a question over the leaderboard, reviews, pools, positions",
+    )
+    ask.add_argument("question", help="e.g. 'which copy candidates respect our range floor?'")
+    ask.add_argument("--chain", type=int, default=cfg.chain, help=f"chainId (default {cfg.chain})")
+    ask.add_argument("--wallet", default=cfg.wallet or None, help="wallet for my_positions")
+    ask.add_argument("--trace", action="store_true", help="print every tool call")
 
     init = sub.add_parser("init", help="write config.toml and .env templates here")
     init.add_argument("--force", action="store_true", help="overwrite existing files")
@@ -305,7 +324,7 @@ def run_config(cfg: Config) -> int:
     t.add_column("KEY")
     t.add_column("VALUE")
     for f in fields(Config):
-        if f.name in ("source", "alerts"):
+        if f.name in ("source", "alerts", "agent"):
             continue
         v = getattr(cfg, f.name)
         if f.name == "wallet" and v:
@@ -313,6 +332,8 @@ def run_config(cfg: Config) -> int:
         t.add_row(f.name, str(v))
     for f in fields(cfg.alerts):
         t.add_row(f"alerts.{f.name}", str(getattr(cfg.alerts, f.name)))
+    for f in fields(cfg.agent):
+        t.add_row(f"agent.{f.name}", str(getattr(cfg.agent, f.name)))
     con.print(t)
     have = {
         "KRYSTAL_CLOUD_KEY": bool(api.cloud_key()),
@@ -633,7 +654,7 @@ def run_scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_vault_review(args: argparse.Namespace) -> int:
+def run_vault_review(args: argparse.Namespace, cfg: Config) -> int:
     from rich.markdown import Markdown
 
     from . import vault_eval
@@ -651,7 +672,12 @@ def run_vault_review(args: argparse.Namespace) -> int:
         con.print(f"[red]{net.redact(str(e))}[/red]")
         return 1
     ev = vault_eval.evaluate(rv)
-    md, js = vr.write_review(rv, args.out, raw=not args.no_raw, evaluation=ev)
+    agent_report = None
+    if args.agent:
+        agent_report = _agent_review(cfg, con, rv, ev, chain_id=chain_id)
+        if agent_report is None:
+            return 1
+    md, js = vr.write_review(rv, args.out, raw=not args.no_raw, evaluation=ev, agent=agent_report)
     if not args.quiet:
         con.print(Markdown(md.read_text(encoding="utf-8")))
     con.print(f"verdict: [bold]{ev.verdict}[/bold] — " + "; ".join(ev.reasons[:2]))
@@ -659,7 +685,73 @@ def run_vault_review(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_vault_leaderboard(args: argparse.Namespace) -> int:
+def _agent_session(cfg: Config, con: Console, *, chain_id: int, wallet: str | None = None):
+    """A started agent session, or None (with the reason printed) when the addon is off."""
+    from .agent import AgentError, Session
+
+    if not cfg.agent.enabled:
+        con.print("[yellow]agent addon is off: set [agent] enabled = true in config.toml[/yellow]")
+        return None
+    session = Session(cfg, chain_id=chain_id, wallet=wallet)
+    try:
+        con.print(
+            "[dim]agent: "
+            + (
+                f"attaching to {cfg.agent.base_url}"
+                if cfg.agent.base_url
+                else f"starting llama-server on {Path(cfg.agent.model).name}"
+            )
+            + " …[/dim]"
+        )
+        session.client()
+    except AgentError as e:
+        con.print(f"[red]{e}[/red]")
+        return None
+    return session
+
+
+def _agent_review(cfg: Config, con: Console, rv, ev, *, chain_id: int, session=None):
+    from .agent import AgentReport
+
+    session = session or _agent_session(cfg, con, chain_id=chain_id)
+    if session is None:
+        return None
+    name = rv.vault.name if rv.vault else rv.address
+    con.print(f"[dim]agent: reading {name} (≤ {cfg.agent.max_steps} tool calls) …[/dim]")
+    run = session.review(rv, ev)
+    _print_trace(con, run)
+    return AgentReport(run)
+
+
+def _print_trace(con: Console, run) -> None:
+    for i, st in enumerate(run.steps, 1):
+        what = f"{st.tool}({st.args})" if st.tool else "final"
+        con.print(
+            f"[dim]  {i}. {what}  {st.elapsed_s:.1f}s  {st.prompt_tokens}+{st.completion_tokens} tok"
+            + (f"  [red]{st.error}[/red]" if st.error else "")
+            + "[/dim]"
+        )
+    if run.error:
+        con.print(f"[red]{run.error}[/red]")
+
+
+def run_ask(args: argparse.Namespace, cfg: Config) -> int:
+    from rich.markdown import Markdown
+
+    from .agent.tasks import run_markdown
+
+    con = Console()
+    session = _agent_session(cfg, con, chain_id=args.chain, wallet=args.wallet)
+    if session is None:
+        return 1
+    run = session.ask(args.question)
+    if args.trace:
+        _print_trace(con, run)
+    con.print(Markdown(run_markdown(run)))
+    return 0 if run.final is not None else 1
+
+
+def run_vault_leaderboard(args: argparse.Namespace, cfg: Config) -> int:
     from dataclasses import replace
 
     from . import vault_eval
@@ -727,8 +819,13 @@ def run_vault_leaderboard(args: argparse.Namespace) -> int:
         con.print("[yellow]no candidate to review; loosen --min-age / --min-tvl[/yellow]")
         return 1
     con.print(f"\n[bold #ffb000]review[/]: top {len(picks)} candidates")
+    session = None
+    if args.agent:
+        session = _agent_session(cfg, con, chain_id=args.chain)
+        if session is None:
+            return 1
     rt = Table(header_style="bold #ffb000", box=box.SIMPLE_HEAD, pad_edge=False)
-    for c in ("VAULT", "VERDICT", "WHY"):
+    for c in ("VAULT", "VERDICT", "WHY", *(("AGENT",) if session else ())):
         rt.add_column(c)
     color = {"worth_testing": "green", "watch": "yellow", "avoid": "red"}
     for r in picks:
@@ -740,10 +837,26 @@ def run_vault_leaderboard(args: argparse.Namespace) -> int:
             continue
         ev = vault_eval.evaluate(rv)
         why = "; ".join(ev.reasons[:2])
+        agent_cell: list[str] = []
+        agent_report = None
+        if session is not None:
+            agent_report = _agent_review(cfg, con, rv, ev, chain_id=args.chain, session=session)
+            f = agent_report.run.final if agent_report else None
+            agent_cell = [
+                (
+                    "agrees"
+                    if f.get("agrees_with_rule_verdict")
+                    else "disagrees: " + f.get("disagreement", "")
+                )
+                if f
+                else f"[red]{agent_report.run.error if agent_report else 'off'}[/red]"
+            ]
         if args.write:
-            md, _ = vr.write_review(rv, args.out, evaluation=ev)
+            md, _ = vr.write_review(rv, args.out, evaluation=ev, agent=agent_report)
             why += f"  [dim]{md}[/dim]"
-        rt.add_row(v.name[:28], f"[{color.get(ev.verdict, 'dim')}]{ev.verdict}[/]", why)
+        rt.add_row(
+            v.name[:28], f"[{color.get(ev.verdict, 'dim')}]{ev.verdict}[/]", why, *agent_cell
+        )
     con.print(rt)
     return 0
 
@@ -795,9 +908,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "backtest":
         return run_backtest(args)
     if args.cmd == "vault-review":
-        return run_vault_review(args)
+        return run_vault_review(args, cfg)
     if args.cmd == "vault-leaderboard":
-        return run_vault_leaderboard(args)
+        return run_vault_leaderboard(args, cfg)
+    if args.cmd == "ask":
+        return run_ask(args, cfg)
     if args.cmd == "watch":
         from .daemon import run_watch
 
