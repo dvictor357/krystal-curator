@@ -235,3 +235,41 @@ TrackScreen {
     padding: 0 1;
     overflow-y: auto;
 }
+
+LeaderboardScreen {
+    background: #000000;
+}
+#lb_topbar {
+    height: 1;
+    background: #ff9a00;
+    color: #000000;
+    text-style: bold;
+    padding: 0 1;
+}
+#lb_body {
+    height: 1fr;
+}
+#lb_table {
+    width: 1fr;
+    height: 1fr;
+    border: solid #a05e00;
+    border-title-color: #ffb000;
+    border-title-style: bold;
+    background: #000000;
+}
+#lb_detail {
+    width: 84;
+    height: 1fr;
+    border: solid #a05e00;
+    border-title-color: #ffb000;
+    border-title-style: bold;
+    background: #000000;
+    padding: 0 1;
+    overflow-y: auto;
+}
+#lb_status {
+    height: 1;
+    background: #101010;
+    color: #ffb000;
+    padding: 0 1;
+}

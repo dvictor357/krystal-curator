@@ -36,7 +36,7 @@ uv run krystal-curator status      # daemon heartbeat, last alerts, history size
 ```
 
 TUI keys: `1-4` profile · `u` toggle USDG-only · `p` cycle protocol · `s` next sort column · `S` asc/desc · click a header to sort by it · `*` watch/unwatch · `W` watched only · `a` auto-refresh on/off · `$` position size ·
-`r` refresh · `o` open pool on Krystal · `l` or `Enter` open the links popup (pool page + website / X / Telegram / Discord …, Enter opens) · `e` export CSV to `exports/` · `/` find · `q` quit.
+`r` refresh · `o` open pool on Krystal · `l` or `Enter` open the links popup (pool page + website / X / Telegram / Discord …, Enter opens) · `e` export CSV to `exports/` · `/` find · `P` my positions · `L` vault leaderboard · `q` quit.
 
 The `LINKS` column shows which socials each pool's tokens have (sortable). `TX1H` / `TX24`
 are swap counts from DexScreener (free, 90 s cache): green 1h = pace ≥1.5× the daily
@@ -266,7 +266,14 @@ coverage, failed sources). The verdict is a rule, not a score: a platform-level 
 fee record pays for its price moves is `worth_testing` (with the instruction-level
 adaptations listed); the rest is `watch`.
 
-## Vault leaderboard (`vault-leaderboard`)
+## Vault leaderboard (`L` in the TUI, `vault-leaderboard` on the CLI)
+
+In the TUI, `L` opens the same board as a screen: `tab` flips between the vault table and
+the owner table, `s` cycles the sort, `c` shows copy candidates only, `Enter` runs the
+full review on the highlighted vault (≈ 5 requests, kept for the session) and shows the
+verdict, its reasons and the failed checks in the right pane, `w` writes that vault's
+report to `reports/`, `o` opens it on Krystal. The board is fetched once per session
+(`r` refreshes).
 
 ```sh
 uv run krystal-curator vault-leaderboard                 # every public AutoFarm vault on the chain

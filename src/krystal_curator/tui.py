@@ -26,7 +26,7 @@ from textual.widgets import DataTable, Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
 from textual_image.widget import HalfcellImage, Image, SixelImage, TGPImage, UnicodeImage
 
-from . import api
+from . import api, leaderboard, net, vault_eval, vault_review
 from .advisor import Advice, advise, price_ladder
 from .analytics import idle_capital, real_roi, report_markdown, track_record
 from .api import KrystalError
@@ -43,7 +43,7 @@ from .reconcile import Recon, Reconciliation, reconcile
 from .rotation import Rotation, plan
 from .scoring import Scored, curate, score_pool
 from .store import Delta, Store, sparkline
-from .vaults import Vault, fetch_vaults
+from .vaults import Vault, fetch_public_vaults, fetch_vaults
 
 # textual-image renders palette PNGs fine; PIL just complains about the conversion.
 warnings.filterwarnings("ignore", message="Palette images with Transparency", module="PIL")
@@ -963,8 +963,293 @@ class PositionsScreen(Screen[str | None]):
             sc = self.curator.pool_for(p.pool_address, p.pool_alt)
             self.dismiss(sc.pool.address if sc else p.pool_address)
 
-    def on_data_table_row_selected(self, _: DataTable.RowSelected) -> None:
+    def on_data_table_row_selected(self, ev: DataTable.RowSelected) -> None:
+        ev.stop()  # else it bubbles to CuratorApp and opens the links modal too
         self.action_jump()
+
+
+class LeaderboardScreen(Screen[None]):
+    """Every public AutoFarm vault on the chain: owners by ROI on their capital, vaults
+    with copy candidates first (`leaderboard.rank`). Enter runs the vault-review
+    evaluation on the highlighted vault (≈ 5 requests) and keeps the verdict for the
+    session; the board itself is one fetch, cached on the app until refreshed."""
+
+    BINDINGS: ClassVar = [
+        Binding("escape", "dismiss(None)", "BACK"),
+        Binding("tab", "toggle_view", "VAULTS/OWNERS"),
+        Binding("s", "cycle_sort", "SORT"),
+        Binding("c", "toggle_candidates", "CANDIDATES"),
+        Binding("enter", "review", "REVIEW", show=True),
+        Binding("w", "write_report", "WRITE REPORT"),
+        Binding("o", "open_url", "OPEN"),
+        Binding("r", "refresh", "REFRESH"),
+    ]
+
+    def __init__(self, app_ref: CuratorApp) -> None:
+        super().__init__()
+        self.curator = app_ref
+        self.view = "vaults"  # vaults / owners
+        self.sort = "roi"
+        self.candidates_only = False
+        self._vault_rows: list[leaderboard.VaultRank] = []
+        self._owner_rows: list[leaderboard.OwnerRank] = []
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="lb_topbar")
+        with Horizontal(id="lb_body"):
+            table = DataTable(id="lb_table", cursor_type="row")
+            table.border_title = "VAULTS"
+            yield table
+            detail = Static("", id="lb_detail")
+            detail.border_title = "VAULT"
+            yield detail
+        yield Static("", id="lb_status")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        if self.curator.board is None:
+            self.action_refresh()
+        else:
+            self._fill()
+
+    # ---- data -----------------------------------------------------------
+    def action_refresh(self) -> None:
+        self._status(f"fetching public vaults on chain {self.curator.chain_id} …")
+        self._fetch()
+
+    @work(thread=True, exclusive=True, group="leaderboard")
+    def _fetch(self) -> None:
+        try:
+            vaults = fetch_public_vaults(self.curator.chain_id)
+        except KrystalError as e:
+            self.app.call_from_thread(self._status, f"ERROR {e}", "bold red")
+            return
+        self.app.call_from_thread(self._loaded, vaults)
+
+    def _loaded(self, vaults: list[Vault]) -> None:
+        self.curator.public_vaults = vaults
+        self.curator.board = leaderboard.rank(vaults, sort=self.sort)
+        self._fill()
+
+    def _status(self, msg: str, style: str = "") -> None:
+        self.query_one("#lb_status", Static).update(Text(msg, style=style))
+
+    # ---- render ---------------------------------------------------------
+    def _fill(self) -> None:
+        board = self.curator.board
+        if board is None:
+            return
+        if board.sort != self.sort:
+            board = self.curator.board = leaderboard.rank(
+                self.curator.public_vaults, sort=self.sort
+            )
+        table = self.query_one("#lb_table", DataTable)
+        table.clear(columns=True)
+        if self.view == "vaults":
+            self._vault_rows = board.candidates if self.candidates_only else board.vaults
+            table.border_title = (
+                f"VAULTS  ({len(board.candidates)} copy candidates of {board.total})"
+            )
+            table.add_columns(*leaderboard.VAULT_COLUMNS)
+            for r in self._vault_rows:
+                *cells, copy = leaderboard.vault_cells(r)
+                table.add_row(
+                    *cells,
+                    Text(copy, style="bold green" if r.candidate else "dim"),
+                    key=r.vault.address,
+                )
+        else:
+            self._owner_rows = board.owners
+            table.border_title = (
+                f"OWNERS  ({len(board.owners)} with ≥ {leaderboard.MIN_TVL:,.0f}$ deposited)"
+            )
+            table.add_columns(*leaderboard.OWNER_COLUMNS)
+            for o in self._owner_rows:
+                table.add_row(*leaderboard.owner_cells(o), key=o.address)
+        table.fixed_columns = 1
+        self._topbar()
+        self._status(
+            "tab = owners/vaults   s = sort   c = candidates only   enter = review (≈5 requests)   "
+            "w = write report   o = open"
+        )
+        self._detail()
+
+    def _topbar(self) -> None:
+        board = self.curator.board
+        if board is None:
+            return
+        self.query_one("#lb_topbar", Static).update(
+            f" VAULT LEADERBOARD   ROBINHOOD({self.curator.chain_id})   {board.total} public vaults   "
+            f"{len(board.owners)} owners ranked   sort {self.sort}   "
+            f"{'candidates only' if self.candidates_only else 'all vaults'}   "
+            f"{len(self.curator.reviews)} reviewed"
+        )
+
+    def _selected_vault(self) -> leaderboard.VaultRank | None:
+        i = self.query_one("#lb_table", DataTable).cursor_row
+        if self.view == "vaults":
+            return self._vault_rows[i] if 0 <= i < len(self._vault_rows) else None
+        if 0 <= i < len(self._owner_rows):
+            return self._owner_rows[i].best
+        return None
+
+    def on_data_table_row_highlighted(self, ev: DataTable.RowHighlighted) -> None:
+        self._detail()
+
+    def on_data_table_row_selected(self, ev: DataTable.RowSelected) -> None:
+        ev.stop()  # the table owns Enter while focused; do not reach CuratorApp's handler
+        self.action_review()
+
+    def _detail(self) -> None:
+        pane = self.query_one("#lb_detail", Static)
+        r = self._selected_vault()
+        if r is None:
+            pane.update(Text("no vault", style="dim"))
+            return
+        v = r.vault
+        pane.border_title = v.name[:40]
+        t = Table.grid(padding=(0, 1), expand=True)
+        t.add_column(style="#ffb000", no_wrap=True)
+        t.add_column(style="white")
+        t.add_row("URL", Text(v.url, style="dim"))
+        who = v.owner_name or leaderboard.short(v.owner)
+        if v.owner_verified and v.owner_verified != "UNCONNECTED":
+            who += f"  {v.owner_verified.lower()}"
+        if v.owner_followers:
+            who += f"  {v.owner_followers} followers"
+        t.add_row("OWNER", who)
+        if self.view == "owners":
+            o = self._owner_rows[self.query_one("#lb_table", DataTable).cursor_row]
+            t.add_row(
+                "OWNER TOTAL",
+                f"{len(o.vaults)} vaults   deposited {o.deposited:,.0f}$   pnl {o.pnl:+,.0f}$   "
+                f"roi {o.roi_pct:+.1f}%   (best vault below)",
+            )
+        t.add_row(
+            "CAPITAL",
+            f"tvl {v.tvl:,.0f}$   deposited {r.deposited:,.0f}$   withdrawn {v.my_withdrawn:,.0f}$   "
+            f"{v.total_users} depositors   owner fee {v.owner_fee_bps / 100:.1f}%",
+        )
+        t.add_row(
+            "RETURN",
+            Text.assemble(
+                (f"pnl {v.pnl:+,.0f}$   ", "green" if v.pnl >= 0 else "red"),
+                (f"roi {r.roi_pct:+.1f}%", ""),
+                (
+                    f" ({r.roi_ann_pct:+,.0f}%/y over {v.age_days:.0f}d)"
+                    if r.roi_ann_pct is not None
+                    else "",
+                    "dim",
+                ),
+            ),
+        )
+        t.add_row(
+            "FEES",
+            f"fee apr {v.fee_apr:,.0f}%   lifetime {v.fee_generated:,.0f}$   24h {v.earning_24h:+,.0f}$   "
+            f"30d {v.earning_30d:+,.0f}$   tx costs {v.max_total_cost:,.0f}$"
+            + (f" ({r.cost_share * 100:.0f}% of fees)" if r.cost_share is not None else ""),
+        )
+        t.add_row(
+            "RISK",
+            f"{v.risk.lower() or '-'}   {', '.join(s.lower() for s in v.securities) or '-'}   "
+            f"copied {v.copy_count}×   agent {'on' if v.agent_activated else 'off'}",
+        )
+        t.add_row(
+            "COPY?",
+            Text("candidate", style="bold green")
+            if r.candidate
+            else Text("no: " + "; ".join(r.why_not), style="yellow"),
+        )
+        t.add_row("", "")
+        ev = self.curator.reviews.get(v.address)
+        if ev is None:
+            t.add_row(
+                "REVIEW",
+                Text("enter = fetch settings, plans, performance and evaluate", style="dim"),
+            )
+        else:
+            color = {"worth_testing": "bold green", "watch": "bold yellow", "avoid": "bold red"}
+            t.add_row("VERDICT", Text(ev.verdict, style=color.get(ev.verdict, "bold")))
+            for why in ev.reasons[:4]:
+                t.add_row("", Text(why, style="white"))
+            fails = [c for c in ev.checks if c.result == "fail"]
+            unknown = [c for c in ev.checks if c.result == "unknown"]
+            t.add_row(
+                "CHECKS",
+                f"{sum(1 for c in ev.checks if c.result == 'pass')} pass   {len(fails)} fail   "
+                f"{len(unknown)} unknown",
+            )
+            for c in fails:
+                t.add_row("", Text(f"{c.key} [{c.basis}]: {c.evidence}", style="red"))
+            pf = ev.performance
+            t.add_row(
+                "CLOSED",
+                f"{pf.closed_positions} positions in {pf.closed_series} series   fees {pf.closed_fees:,.0f}$   "
+                f"price pnl {pf.closed_price_pnl:+,.0f}$   after tx {pf.closed_pnl_after_tx:+,.0f}$",
+            )
+            if ev.evidence.why_not:
+                t.add_row("EVIDENCE", Text("; ".join(ev.evidence.why_not), style="yellow"))
+        pane.update(t)
+
+    # ---- actions --------------------------------------------------------
+    def action_toggle_view(self) -> None:
+        self.view = "owners" if self.view == "vaults" else "vaults"
+        self._fill()
+
+    def action_cycle_sort(self) -> None:
+        i = leaderboard.SORTS.index(self.sort)
+        self.sort = leaderboard.SORTS[(i + 1) % len(leaderboard.SORTS)]
+        self._fill()
+
+    def action_toggle_candidates(self) -> None:
+        self.candidates_only = not self.candidates_only
+        self._fill()
+
+    def action_open_url(self) -> None:
+        r = self._selected_vault()
+        if r:
+            webbrowser.open(r.vault.url)
+            self._status(f"opened {r.vault.name}")
+
+    def action_review(self) -> None:
+        r = self._selected_vault()
+        if r is None:
+            return
+        if r.vault.address in self.curator.reviews:
+            self._detail()
+            return
+        self._status(f"reviewing {r.vault.name} … (settings, plans, performance)")
+        self._review(r.vault)
+
+    @work(thread=True, group="review")
+    def _review(self, v: Vault) -> None:
+        try:
+            rv = vault_review.fetch_review(v.chain_id, v.address)
+        except (KrystalError, net.HttpError) as e:
+            self.app.call_from_thread(self._status, f"ERROR {net.redact(str(e))}", "bold red")
+            return
+        ev = vault_eval.evaluate(rv)
+        self.app.call_from_thread(self._reviewed, v, rv, ev)
+
+    def _reviewed(self, v: Vault, rv: vault_review.Review, ev: vault_eval.Evaluation) -> None:
+        self.curator.reviews[v.address] = ev
+        self.curator.review_data[v.address] = rv
+        self._topbar()
+        self._detail()  # not _fill: keep the cursor where the user left it
+        self._status(f"{v.name}: {ev.verdict} — " + "; ".join(ev.reasons[:1]))
+
+    def action_write_report(self) -> None:
+        r = self._selected_vault()
+        if r is None:
+            return
+        rv = self.curator.review_data.get(r.vault.address)
+        if rv is None:
+            self._status("review it first (enter), then w writes the report", "yellow")
+            return
+        md, _ = vault_review.write_review(
+            rv, Path("reports"), evaluation=self.curator.reviews[r.vault.address]
+        )
+        self._status(f"wrote {md}")
 
 
 class CuratorApp(App[None]):
@@ -984,6 +1269,7 @@ class CuratorApp(App[None]):
         Binding("asterisk", "toggle_watch", "WATCH", key_display="*"),
         Binding("W", "watch_only", "★ONLY"),
         Binding("P", "positions", "MY POS"),
+        Binding("L", "leaderboard", "LEADERBOARD"),
         Binding("o", "open_url", "OPEN"),
         Binding("l", "links", "LINKS"),
         Binding("e", "export_csv", "CSV"),
@@ -1012,6 +1298,10 @@ class CuratorApp(App[None]):
         self.units_used = 0  # Cloud API units spent this session
         self.positions: list[Position] = []  # direct wallet positions (Cloud API)
         self.vaults: list[Vault] = []  # vault positions (public API)
+        self.public_vaults: list[Vault] = []  # every vault on the chain (leaderboard)
+        self.board: leaderboard.Leaderboard | None = None
+        self.reviews: dict[str, vault_eval.Evaluation] = {}  # vault address → verdict
+        self.review_data: dict[str, vault_review.Review] = {}
         self.position_size = size
         self.refresh_seconds = refresh_seconds if refresh_seconds > 0 else 300
         self.auto = refresh_seconds > 0
@@ -1763,6 +2053,9 @@ class CuratorApp(App[None]):
             self.notify(msg, title="POSITIONS NEEDS", severity="error", timeout=12)
             return
         self.push_screen(PositionsScreen(self), self._on_positions_closed)
+
+    def action_leaderboard(self) -> None:
+        self.push_screen(LeaderboardScreen(self))
 
     def _on_positions_closed(self, pool_key: str | None) -> None:
         """Jump the screener to the pool the user picked in the positions view."""

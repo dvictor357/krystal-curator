@@ -680,9 +680,6 @@ def run_vault_leaderboard(args: argparse.Namespace) -> int:
         con.print(f"[yellow]no public AutoFarm vault on chain {args.chain}[/yellow]")
         return 1
 
-    def pct(x: float | None, digits: int = 0) -> str:
-        return "-" if x is None else f"{x:+,.{digits}f}"
-
     o = Table(
         title=f"owners  chain {args.chain}  {len(board.owners)} owners of {board.total} vaults  "
         f"sort {args.sort}",
@@ -691,38 +688,15 @@ def run_vault_leaderboard(args: argparse.Namespace) -> int:
         box=box.SIMPLE_HEAD,
         pad_edge=False,
     )
-    for c in (
-        "#",
-        "OWNER",
-        "VAULTS",
-        "DEPOSITED",
-        "TVL",
-        "PNL",
-        "ROI%",
-        "FEES",
-        "30D",
-        "COPIES",
-        "BEST VAULT",
-    ):
-        o.add_column(c, justify="left" if c in ("OWNER", "BEST VAULT") else "right")
+    o.add_column("#", justify="right")
+    for c in leaderboard.OWNER_COLUMNS:
+        o.add_column(c, justify="left" if c in leaderboard.TEXT_COLUMNS else "right")
     for i, ow in enumerate(board.owners[: args.top], 1):
-        o.add_row(
-            str(i),
-            ow.label
-            + ("" if ow.verified in ("", "UNCONNECTED") else f" [dim]{ow.verified.lower()}[/dim]"),
-            str(len(ow.vaults)),
-            f"{ow.deposited:,.0f}",
-            f"{ow.tvl:,.0f}",
-            pct(ow.pnl),
-            pct(ow.roi_pct, 1),
-            f"{ow.fees:,.0f}",
-            pct(ow.earning_30d),
-            str(ow.copies) if ow.copies else "-",
-            ow.best.vault.name[:28],
-        )
+        o.add_row(str(i), *leaderboard.owner_cells(ow))
     con.print(o)
     con.print(
-        "[dim]ROI% = Σpnl / Σlifetime deposits (not annualised); owners keep their losers[/dim]\n"
+        f"[dim]ROI% = Σpnl / Σlifetime deposits (not annualised); owners keep their losers; "
+        f"owners below {args.min_tvl:,.0f}$ deposited are not ranked[/dim]\n"
     )
 
     t = Table(
@@ -734,44 +708,13 @@ def run_vault_leaderboard(args: argparse.Namespace) -> int:
         box=box.SIMPLE_HEAD,
         pad_edge=False,
     )
-    for c in (
-        "#",
-        "VAULT",
-        "OWNER",
-        "AGE",
-        "TVL",
-        "PNL",
-        "ROI%",
-        "ROI%/Y",
-        "FEE APR",
-        "30D%",
-        "COST%",
-        "USERS",
-        "COPIES",
-        "RISK",
-        "COPY?",
-    ):
-        t.add_column(c, justify="left" if c in ("VAULT", "OWNER", "RISK", "COPY?") else "right")
+    t.add_column("#", justify="right")
+    for c in leaderboard.VAULT_COLUMNS:
+        t.add_column(c, justify="left" if c in leaderboard.TEXT_COLUMNS else "right")
     shown = board.vaults[: args.top]
     for i, r in enumerate(shown, 1):
-        v = r.vault
-        t.add_row(
-            str(i),
-            v.name[:28],
-            v.owner_name[:14] or f"{v.owner[:6]}…{v.owner[-4:]}",
-            f"{v.age_days:.0f}d",
-            f"{v.tvl:,.0f}",
-            pct(v.pnl),
-            pct(r.roi_pct, 1),
-            pct(r.roi_ann_pct),
-            f"{v.fee_apr:,.0f}%",
-            pct(r.yield_30d_pct, 1),
-            "-" if r.cost_share is None else f"{r.cost_share * 100:.0f}",
-            str(v.total_users),
-            str(v.copy_count) if v.copy_count else "-",
-            v.risk.lower() or "-",
-            "[green]yes[/green]" if r.candidate else f"[dim]{r.why_not[0]}[/dim]",
-        )
+        *cells, copy = leaderboard.vault_cells(r)
+        t.add_row(str(i), *cells, "[green]yes[/green]" if r.candidate else f"[dim]{copy}[/dim]")
     con.print(t)
     con.print("[dim]URLs:[/dim]")
     for i, r in enumerate(shown, 1):

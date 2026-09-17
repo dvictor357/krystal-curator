@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 
@@ -31,6 +32,17 @@ def app(tmp_path, monkeypatch):
     a.monitor.store = a.store
     a.meta._dir = tmp_path
     return a
+
+
+def _plain(widget) -> str:
+    """Text of a Static whose content is a rich renderable (Table / Text / Group)."""
+    from rich.console import Console
+
+    r = widget.render()
+    r = getattr(r, "_renderable", r)  # Textual ≥ 8 wraps rich renderables in a RichVisual
+    con = Console(width=200, record=True, file=io.StringIO())
+    con.print(r)
+    return con.export_text()
 
 
 async def _loaded(app, pilot):
@@ -252,3 +264,77 @@ async def test_reconcile_column_and_status(app, monkeypatch):
         app._set_sort("SRCΔ")
         await pilot.pause(0.2)
         assert app.rows[0].recon is not None  # worst disagreement sorts first
+
+
+@pytest.mark.asyncio
+async def test_leaderboard_screen_ranks_and_reviews(app, monkeypatch, tmp_path):
+    """L opens the public-vault leaderboard; tab flips to owners; enter reviews the
+    highlighted vault through vault_review + vault_eval and keeps the verdict."""
+    from krystal_curator import vault_eval, vault_review
+    from krystal_curator.vaults import _parse_vault
+
+    pages = json.loads((Path(__file__).parent / "fixtures" / "vault_list.json").read_text())
+    vaults = [_parse_vault(d, owned=False) for pg in pages for d in pg["data"]]
+    monkeypatch.setattr(tui_mod, "fetch_public_vaults", lambda chain_id, **kw: list(vaults))
+    reviewed: list[str] = []
+
+    ev = vault_eval.Evaluation(
+        verdict="avoid",
+        reasons=["min_range_platform: minimumRange 10% (platform control)"],
+        performance=vault_eval.Performance(),
+        checks=[],
+        evidence=vault_eval.Evidence(),
+        limits=vault_eval.DEFAULT_LIMITS,
+    )
+
+    def fake_review(chain_id, address, **kw):
+        reviewed.append(address)
+        return vault_review.Review(fetched_at="", chain_id=chain_id, address=address, url="")
+
+    monkeypatch.setattr(vault_review, "fetch_review", fake_review)
+    monkeypatch.setattr(vault_eval, "evaluate", lambda rv: ev)
+    monkeypatch.chdir(tmp_path)
+
+    async with app.run_test(size=(240, 60)) as pilot:
+        await _loaded(app, pilot)
+        await pilot.press("L")
+        for _ in range(30):
+            await pilot.pause(0.1)
+            if type(app.screen).__name__ == "LeaderboardScreen" and app.board:
+                break
+        await pilot.pause(0.3)
+        table = app.screen.query_one("#lb_table", DataTable)
+        assert table.row_count == 6 and app.board.total == 6
+        first = str(table.get_row_at(0)[0])
+        assert first in ("Naabu2", "Es RH bank", "Vault Es raptor")  # candidates first
+        assert "candidate" in _plain(app.screen.query_one("#lb_detail"))
+
+        await pilot.press("c")  # candidates only
+        await pilot.pause(0.2)
+        assert table.row_count == 3
+        await pilot.press("tab")  # owners
+        await pilot.pause(0.2)
+        assert table.border_title.startswith("OWNERS")
+        assert table.row_count == len(app.board.owners) >= 3
+        await pilot.press("tab")
+        await pilot.pause(0.2)
+
+        await pilot.press("enter")
+        for _ in range(30):
+            await pilot.pause(0.1)
+            if app.reviews:
+                break
+        assert len(reviewed) == 1 and reviewed[0] in app.reviews
+        body = _plain(app.screen.query_one("#lb_detail"))
+        assert "avoid" in body and "minimumRange" in body
+        await pilot.press("enter")  # cached: no second fetch
+        await pilot.pause(0.2)
+        assert len(reviewed) == 1
+
+        await pilot.press("w")
+        await pilot.pause(0.3)
+        written = list((tmp_path / "reports").glob("vault_review_*.md"))
+        assert len(written) == 1
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+        assert type(app.screen).__name__ != "LeaderboardScreen"

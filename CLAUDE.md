@@ -5,7 +5,7 @@ Python 3.13, `uv`, Textual TUI. Owner is an LP / vault manager; numbers drive re
 
 ## Commands
 - `uv sync --all-groups` · `uv run pytest -q` · `uv run ruff check src tests && uv run ruff format src tests`
-- `uv run krystal-curator` (TUI) · `scan` · `watch` (daemon) · `backtest` · `vault-review <URL>` (public vault → dated MD/JSON report in `reports/`) · `vault-leaderboard` (all public vaults: owners by ROI, copy candidates, `--review N` evaluates them)
+- `uv run krystal-curator` (TUI) · `scan` · `watch` (daemon) · `backtest` · `vault-review <URL>` (public vault → dated MD/JSON report in `reports/`) · `vault-leaderboard` (all public vaults: owners by ROI, copy candidates, `--review N` evaluates them; TUI `L` = `LeaderboardScreen`, Enter reviews one vault, verdicts cached on the app)
 - Secrets in `.env` (gitignored): `KRYSTAL_WALLET`, optional `KRYSTAL_CLOUD_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
   Never commit `.env`, `exports/`, `reports/`.
 

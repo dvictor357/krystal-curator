@@ -63,7 +63,7 @@ class OwnerRank:
 
     @property
     def label(self) -> str:
-        return self.name or f"{self.address[:6]}…{self.address[-4:]}"
+        return self.name or short(self.address)
 
 
 @dataclass(slots=True)
@@ -170,3 +170,61 @@ def rank(
     owners = [o for o in owners if o.deposited >= min_tvl]
     owners.sort(key=_owner_key(sort), reverse=True)
     return Leaderboard(vaults=ranked, owners=owners, sort=sort, total=len(vaults))
+
+
+# ---- cells: one formatting for the scan table and the TUI --------------------------
+
+VAULT_COLUMNS = (
+    "VAULT", "OWNER", "AGE", "TVL", "PNL", "ROI%", "ROI%/Y", "FEE APR", "30D%", "COST%",
+    "USERS", "COPIES", "RISK", "COPY?",
+)  # fmt: skip
+OWNER_COLUMNS = (
+    "OWNER", "VAULTS", "DEPOSITED", "TVL", "PNL", "ROI%", "FEES", "30D", "COPIES", "BEST VAULT",
+)  # fmt: skip
+TEXT_COLUMNS = {"VAULT", "OWNER", "RISK", "COPY?", "BEST VAULT"}  # left-aligned
+
+
+def _signed(x: float | None, digits: int = 0) -> str:
+    return "-" if x is None else f"{x:+,.{digits}f}"
+
+
+def short(address: str) -> str:
+    return f"{address[:6]}…{address[-4:]}" if len(address) > 12 else address
+
+
+def vault_cells(r: VaultRank) -> list[str]:
+    """Plain strings, `VAULT_COLUMNS` order; the last is "yes" or the first failed rule."""
+    v = r.vault
+    return [
+        v.name[:28],
+        v.owner_name[:14] or short(v.owner),
+        f"{v.age_days:.0f}d",
+        f"{v.tvl:,.0f}",
+        _signed(v.pnl),
+        _signed(r.roi_pct, 1),
+        _signed(r.roi_ann_pct),
+        f"{v.fee_apr:,.0f}%",
+        _signed(r.yield_30d_pct, 1),
+        "-" if r.cost_share is None else f"{r.cost_share * 100:.0f}",
+        str(v.total_users),
+        str(v.copy_count) if v.copy_count else "-",
+        v.risk.lower() or "-",
+        "yes" if r.candidate else r.why_not[0],
+    ]
+
+
+def owner_cells(o: OwnerRank) -> list[str]:
+    """Plain strings, `OWNER_COLUMNS` order."""
+    verified = "" if o.verified in ("", "UNCONNECTED") else f" ({o.verified.lower()})"
+    return [
+        o.label + verified,
+        str(len(o.vaults)),
+        f"{o.deposited:,.0f}",
+        f"{o.tvl:,.0f}",
+        _signed(o.pnl),
+        _signed(o.roi_pct, 1),
+        f"{o.fees:,.0f}",
+        _signed(o.earning_30d),
+        str(o.copies) if o.copies else "-",
+        o.best.vault.name[:28],
+    ]
