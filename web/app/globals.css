@@ -3173,3 +3173,47 @@ dd {
     display: none;
   }
 }
+
+/* Settings: alerts block */
+.alerts-box {
+  margin: 26px 0 0;
+  padding: 18px 20px 6px;
+  border: 1px solid var(--line);
+}
+.alerts-box legend {
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.alerts-box label {
+  margin-top: 8px;
+}
+.field-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.field-row input {
+  flex: 1;
+}
+.field-row .button {
+  align-self: stretch;
+  min-height: 0;
+}
+.check-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 12px;
+  color: var(--text);
+}
+.check-row input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--amber);
+}

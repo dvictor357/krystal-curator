@@ -4,6 +4,8 @@ export type Settings = {
   source: string;
   size: number;
   wallet: string;
+  telegram_chat_id: string;
+  alerts: boolean;
 };
 export type Pool = {
   id: string;
@@ -50,4 +52,6 @@ export const defaults: Settings = {
   source: "krystal",
   size: 10000,
   wallet: "",
+  telegram_chat_id: "",
+  alerts: true,
 };

@@ -62,6 +62,8 @@ class Preferences(models.Model):
     source = fields.CharField(max_length=20, default="krystal")
     size = fields.FloatField(default=10000)
     wallet = fields.CharField(max_length=42, default="")
+    telegram_chat_id = fields.CharField(max_length=32, default="")
+    alerts = fields.BooleanField(default=True)
 
     class Meta:
         table = "curator_preferences"
@@ -99,6 +101,32 @@ class Verdict(models.Model):
     class Meta:
         table = "curator_verdicts"
         indexes = (("user", "position_id", "at"),)
+
+
+class AlertState(models.Model):
+    """What the alert loop last saw for one position; alerts fire on changes."""
+
+    id = fields.IntField(primary_key=True)
+    user = fields.ForeignKeyField(
+        "models.User", related_name="alert_states", on_delete=fields.CASCADE
+    )
+    position_id = fields.CharField(max_length=120)
+    state = fields.JSONField()
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "curator_alert_state"
+        unique_together = (("user", "position_id"),)
+
+
+class Job(models.Model):
+    """Cross-worker lease so a periodic job runs once per interval, not once per process."""
+
+    name = fields.CharField(max_length=40, primary_key=True)
+    locked_until = fields.DatetimeField()
+
+    class Meta:
+        table = "curator_jobs"
 
 
 class RateLimit(models.Model):

@@ -16,6 +16,7 @@ Create a PostgreSQL database and a dedicated database user. Configure the Python
 - `CURATOR_DATABASE_URL`: PostgreSQL connection URL (`postgres://...`).
 - `CURATOR_API_SECRET`: at least 32 random characters; use the same value in both processes.
 - `CURATOR_COOKIE_SECURE=false`: local HTTP only. Omit it or use `true` behind HTTPS.
+- `TELEGRAM_BOT_TOKEN` (optional): enables per-user position alerts. Users paste their chat ID in Settings and press "Send test"; the API process runs one alert tick every `CURATOR_ALERT_INTERVAL` seconds (default 300), leased through `curator_jobs` so several workers do not double-send. Rules: out of range, range edge within 0.5σ, pool grade decay, PnL drop ≥ 5 %, rotation verdict opening or closing.
 
 Copy `web/.env.example` to `web/.env.local`, set the same secret and `CURATOR_ORIGIN=http://127.0.0.1:3000`. Open that exact origin; cookies and CSRF checks intentionally depend on it. The frontend has no public environment secrets.
 

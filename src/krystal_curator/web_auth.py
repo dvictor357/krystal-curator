@@ -213,7 +213,7 @@ async def logout(request: Request, response: Response):
 @router.get("/account")
 async def account(user: Annotated[User, Depends(current_user)]):
     preferences = await Preferences.filter(user_id=user.id).values(
-        "profile", "chain", "source", "size", "wallet"
+        "profile", "chain", "source", "size", "wallet", "telegram_chat_id", "alerts"
     )
     watched = (
         await Watch.filter(user_id=user.id)
@@ -235,6 +235,8 @@ class Settings(BaseModel):
     source: Literal["krystal", "rhpools"]
     size: float = Field(ge=1, le=100_000_000, allow_inf_nan=False)
     wallet: str = Field(pattern=r"^(0x[a-fA-F0-9]{40})?$", max_length=42)
+    telegram_chat_id: str = Field(default="", pattern=r"^(-?\d{1,20})?$", max_length=32)
+    alerts: bool = True
 
     @model_validator(mode="after")
     def valid_chain(self):
@@ -249,6 +251,12 @@ class SettingsAction(BaseModel):
     settings: Settings
 
 
+class TelegramTestAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["telegram_test"]
+    chatId: str = Field(pattern=r"^-?\d{1,20}$", max_length=32)
+
+
 class WatchAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action: Literal["watch"]
@@ -260,10 +268,24 @@ class WatchAction(BaseModel):
 
 @router.post("/account")
 async def update_account(
-    body: Annotated[SettingsAction | WatchAction, Field(discriminator="action")],
+    body: Annotated[
+        SettingsAction | WatchAction | TelegramTestAction, Field(discriminator="action")
+    ],
     user: Annotated[User, Depends(current_user)],
 ):
     await throttle(f"account:{user.id}", 60)
+    if isinstance(body, TelegramTestAction):
+        from . import web_alerts
+
+        await throttle(f"telegram-test:{user.id}", 3, 600)
+        sent = await web_alerts.send_test(body.chatId)
+        if sent is None:
+            raise HTTPException(503, "Telegram alerts are not configured on this deployment.")
+        if not sent:
+            raise HTTPException(
+                422, "Telegram did not accept the message. Start the bot first, then retry."
+            )
+        return {"ok": True}
     if isinstance(body, SettingsAction):
         await Preferences.update_or_create(user_id=user.id, defaults=body.settings.model_dump())
     else:

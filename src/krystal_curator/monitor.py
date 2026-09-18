@@ -68,7 +68,7 @@ class Monitor:
         alerts = self._watchlist_alerts(pools)
         if vaults is not None:
             self.vaults = vaults
-            alerts += self._position_alerts()
+            alerts += self.position_alerts()
             self._snapshot_vaults()
         return alerts
 
@@ -104,7 +104,7 @@ class Monitor:
         self.store.prune(self.snapshot_days)
 
     # ---- positions ------------------------------------------------------
-    def _position_alerts(self) -> list[Alert]:
+    def position_alerts(self) -> list[Alert]:
         """State changes since the previous tick; the first tick only reports what is
         bad right now (out of range, edge critical)."""
         out: list[Alert] = []

@@ -978,6 +978,25 @@ function SettingsForm({
   const [draft, setDraft] = useState(settings);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  async function testTelegram() {
+    setTesting(true);
+    setMessage("");
+    try {
+      await request("/api/account", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "telegram_test",
+          chatId: draft.telegram_chat_id,
+        }),
+      });
+      setMessage("Test message sent. Save to keep alerts on for this chat.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Could not send the test.");
+    } finally {
+      setTesting(false);
+    }
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -1076,6 +1095,49 @@ function SettingsForm({
           Public address only. Curator never asks for a private key.
         </small>
       </label>
+      <fieldset className="alerts-box">
+        <legend>Alerts · Telegram</legend>
+        <label>
+          Telegram chat ID
+          <span className="field-row">
+            <input
+              placeholder="e.g. 123456789"
+              maxLength={32}
+              pattern="-?[0-9]{1,20}"
+              disabled={demo}
+              value={draft.telegram_chat_id}
+              onChange={(e) =>
+                setDraft({ ...draft, telegram_chat_id: e.target.value })
+              }
+            />
+            <button
+              type="button"
+              className="button secondary small"
+              disabled={
+                demo || testing || !/^-?\d{1,20}$/.test(draft.telegram_chat_id)
+              }
+              onClick={testTelegram}
+            >
+              {testing ? "Sending…" : "Send test"}
+            </button>
+          </span>
+          <small>
+            Open the Curator bot in Telegram, press Start, then paste your chat
+            ID (from @userinfobot). Alerts: out of range, edge within 0.5σ, pool
+            grade decay, PnL drop ≥ 5%, and rotation verdicts opening or
+            closing. Checked every 5 minutes.
+          </small>
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            disabled={demo}
+            checked={draft.alerts}
+            onChange={(e) => setDraft({ ...draft, alerts: e.target.checked })}
+          />
+          Send alerts for the wallet above
+        </label>
+      </fieldset>
       {demo && (
         <p className="fine-print">
           The demo uses Robinhood / Krystal and a fixed $10,000 simulation.

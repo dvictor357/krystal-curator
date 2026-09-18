@@ -705,7 +705,7 @@ class PositionsScreen(Screen[str | None]):
             self.curator.positions = direct
         self.curator.monitor.direct = self.curator.positions
         self.curator.monitor.vaults = vaults
-        for a in self.curator.monitor._position_alerts():
+        for a in self.curator.monitor.position_alerts():
             self.app.notify(a.text, title=a.title, severity=a.severity, timeout=30)
         self._fill()
         if err:
