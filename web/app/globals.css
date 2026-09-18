@@ -2253,6 +2253,15 @@ dd {
 .rotation-current td {
   background: #11130f;
 }
+.rotation-table tr.clickable {
+  cursor: pointer;
+}
+.rotation-table tr.clickable:hover td {
+  background: #161911;
+}
+.rotation-table tr.clickable td strong {
+  border-bottom: 1px dashed #3d4036;
+}
 .rotation-note {
   padding: 10px 12px;
   margin: 0;
@@ -3409,4 +3418,13 @@ dd {
   padding: 14px 10px;
   font-size: 12px;
   color: var(--muted);
+}
+
+.notice.concentration {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid #5a4218;
+  background: #15120b;
+  font-size: 12px;
+  line-height: 1.6;
 }

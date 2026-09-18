@@ -12,18 +12,30 @@ from .scoring import Scored, curate
 
 ROTATE_COST_PCT = 0.3  # % of value burned by exiting + re-entering (swaps, slippage, gas)
 MIN_UPLIFT_DAY = 0.05  # USD/day below which a "better" pool is noise, not a rotation
+MIN_ROTATE_VALUE = 10.0  # USD; below this the switch cost and dust dominate, no verdict
+SPIKE_RATIO = 2.0  # 24h fee/day more than this × the 7d average = a spike, not a yield
 
 
 @dataclass(slots=True, frozen=True)
 class Candidate:
     scored: Scored
     sim: Sim
+    fee_day: float  # conservative fee basis: min(24h, 7d average) when 7d is known
+    net_day: float  # fee_day − IL/day; what uplift and ranking use
+    spike: bool  # 24h fees run far above the 7d average: yesterday, not a yield
     uplift_day: float  # candidate net/day − current net/day (USD)
     payback_days: float | None  # rotation cost / uplift; None if no uplift
 
     @property
     def pool(self) -> Pool:
         return self.scored.pool
+
+
+def conservative(sim: Sim, pool: Pool) -> tuple[float, bool]:
+    """Fee/day to plan on, and whether the 24h number is a spike over the 7d average."""
+    if "stat7d" in pool.unknown or sim.fee_day_7d <= 0:
+        return sim.fee_day, False
+    return min(sim.fee_day, sim.fee_day_7d), sim.fee_day > SPIKE_RATIO * sim.fee_day_7d
 
 
 @dataclass(slots=True, frozen=True)
@@ -42,7 +54,7 @@ class Rotation:
     def kind(self) -> str:
         """Machine form of `verdict`: rotate / consider / stay / none."""
         b = self.best
-        if b is None:
+        if b is None or self.value < MIN_ROTATE_VALUE:
             return "none"
         if b.uplift_day < MIN_UPLIFT_DAY or b.payback_days is None:
             return "stay"
@@ -57,6 +69,8 @@ class Rotation:
         b = self.best
         if b is None:
             return "no candidate passes the profile"
+        if self.value < MIN_ROTATE_VALUE:
+            return f"too small to rotate ({self.value:,.2f}$)"
         if b.uplift_day < MIN_UPLIFT_DAY:
             return "STAY — nothing in this profile beats the current position"
         if b.payback_days is not None and b.payback_days <= 3:
@@ -89,8 +103,10 @@ def plan(
             continue
         sim = simulate(sc.pool, value)
         sc.sim = sim
-        uplift = sim.net_day - current_net
+        fee_day, spike = conservative(sim, sc.pool)
+        net_day = fee_day - sim.il_day
+        uplift = net_day - current_net
         payback = cost / uplift if uplift > 0 else None
-        cands.append(Candidate(sc, sim, uplift, payback))
-    cands.sort(key=lambda c: c.sim.net_day, reverse=True)
+        cands.append(Candidate(sc, sim, fee_day, net_day, spike, uplift, payback))
+    cands.sort(key=lambda c: c.net_day, reverse=True)
     return Rotation(value, current_net, cur_sim, cost, cands[:top])

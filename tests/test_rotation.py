@@ -141,3 +141,28 @@ def test_rotation_rows_are_json_ready():
     assert row["candidates"][0]["poolId"] == "4663:uniswapv4:0xhot"
     assert row["edge"]["name"] in {"lower", "upper"}
     assert row["kind"] == ("rotate" if row["best"]["paybackDays"] <= 3 else row["kind"])
+
+
+def test_conservative_basis_and_spike_flag():
+    from krystal_curator.models import Stat
+
+    cur = pool("0xcur", "ETH", 10_000_000, 5_000, vol=2)
+    spiky = pool("0xspk", "MEME", 500_000, 20_000, vol=25)
+    spiky.s7d = Stat(volume=1, fee=20_000 * 7 / 5, apr=0)  # 7d average is a fifth of 24h
+    steady = pool("0xstd", "AI", 500_000, 6_000, vol=25)
+    r = plan(
+        pos(10_000), 5.0, [cur, spiky, steady], PROFILES["degen"], quote="USDG", current_pool=cur
+    )
+    by = {c.pool.address: c for c in r.candidates}
+    assert by["0xspk"].spike and not by["0xstd"].spike
+    assert by["0xspk"].fee_day < by["0xspk"].sim.fee_day  # planned on the 7d number
+    assert by["0xstd"].fee_day == by["0xstd"].sim.fee_day
+    # Steady pool ranks first once the spike is discounted.
+    assert r.candidates[0].pool.address == "0xstd"
+
+
+def test_dust_position_gets_no_verdict():
+    cur = pool("0xcur", "ETH", 10_000_000, 5_000, vol=2)
+    hot = pool("0xhot", "AI", 500_000, 20_000, vol=25)
+    r = plan(pos(0.15), 0.0, [cur, hot], PROFILES["degen"], quote="USDG", current_pool=cur)
+    assert r.kind == "none" and "too small" in r.verdict

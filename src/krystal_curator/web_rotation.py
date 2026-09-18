@@ -50,6 +50,14 @@ def rotation_row(
         "verdict": rot.verdict,
         "current": {
             "grade": grade,
+            "address": pos.pool_address,
+            "chain": pos.chain_id,
+            "url": current.url if current else "",
+            "poolId": (
+                f"{current.chain_id}:{current.protocol}:{current.address.lower()}"
+                if current
+                else None
+            ),
             "feeDay": adv.fee_per_day,
             "ilDay": rot.current_sim.il_day if rot.current_sim else None,
             "netDay": rot.current_net_day,
@@ -63,6 +71,9 @@ def rotation_row(
             {
                 "pair": best.pool.pair,
                 "poolId": f"{best.pool.chain_id}:{best.pool.protocol}:{best.pool.address.lower()}",
+                "grade": best.scored.grade,
+                "tvl": best.pool.tvl,
+                "spike": best.spike,
                 "upliftDay": best.uplift_day,
                 "paybackDays": best.payback_days,
             }
@@ -84,12 +95,17 @@ def rotation_row(
             {
                 "pair": c.pool.pair,
                 "poolId": f"{c.pool.chain_id}:{c.pool.protocol}:{c.pool.address.lower()}",
+                "address": c.pool.address,
+                "chain": c.pool.chain_id,
+                "url": c.pool.url,
                 "protocol": c.pool.protocol,
                 "grade": c.scored.grade,
-                "feeDay": c.sim.fee_day,
+                "feeDay": c.fee_day,
+                "feeDay24h": c.sim.fee_day,
                 "feeDay7d": None if "stat7d" in c.pool.unknown else c.sim.fee_day_7d,
+                "spike": c.spike,
                 "ilDay": c.sim.il_day,
-                "netDay": c.sim.net_day,
+                "netDay": c.net_day,
                 "share": c.sim.share,
                 "upliftDay": c.uplift_day,
                 "paybackDays": c.payback_days,

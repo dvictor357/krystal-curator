@@ -132,6 +132,15 @@ export function Workspace({
   useEffect(() => {
     setSelected(null);
   }, [poolsPath]);
+  // Deep link from a rotation candidate: /app?pool=<id> opens that pool's detail.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("pool");
+    if (!wanted || !rows.some((p) => p.id === wanted)) return;
+    setProtocol("all");
+    setQuery("");
+    setSelected(wanted);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [rows]);
   useEffect(() => {
     if (refresh && poolsPath) pools.refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1316,10 +1325,15 @@ function RangeBar({ p }: { p: VaultPosition }) {
 type Candidate = {
   pair: string;
   poolId: string;
+  address: string;
+  chain: number;
+  url: string;
   protocol: string;
   grade: string;
   feeDay: number;
+  feeDay24h: number;
   feeDay7d: number | null;
+  spike: boolean;
   ilDay: number;
   netDay: number;
   share: number;
@@ -1336,6 +1350,10 @@ type RotationRow = {
   verdict: string;
   current: {
     grade: string | null;
+    address: string;
+    chain: number;
+    url: string;
+    poolId: string | null;
     feeDay: number;
     ilDay: number | null;
     netDay: number;
@@ -1346,6 +1364,9 @@ type RotationRow = {
   best: {
     pair: string;
     poolId: string;
+    grade: string;
+    tvl: number;
+    spike: boolean;
     upliftDay: number;
     paybackDays: number | null;
   } | null;
@@ -1393,6 +1414,35 @@ function RotationVerdict({
   open: boolean;
   toggle: () => void;
 }) {
+  const palette = usePalette();
+  const router = useRouter();
+  function poolActions(
+    pair: string,
+    poolId: string | null,
+    address: string,
+    chain: number,
+    url: string,
+  ) {
+    palette({
+      title: `${pair} · pool`,
+      subtitle: address,
+      actions: [
+        ...(poolId
+          ? [
+              {
+                id: "inspect",
+                kind: "run" as const,
+                label: "Inspect in screener",
+                hint: "score · simulation · risk flags",
+                run: () =>
+                  router.push(`/app?pool=${encodeURIComponent(poolId)}`),
+              },
+            ]
+          : []),
+        ...addressActions("pool", address, chain, { krystalUrl: url }),
+      ],
+    });
+  }
   const label =
     r.kind === "rotate"
       ? "Rotate"
@@ -1427,6 +1477,25 @@ function RotationVerdict({
           )}
         </span>
         <span className="rotation-meta">
+          {r.best && r.kind !== "none" && r.best.spike && (
+            <span
+              className="amber"
+              title="24h fees far above the 7d average; planned on the 7d number"
+            >
+              24h spike
+            </span>
+          )}
+          {r.best &&
+            r.kind !== "none" &&
+            r.current.grade &&
+            r.best.grade > r.current.grade && (
+              <span
+                className="amber"
+                title="The alternative scores worse than your current pool in this profile"
+              >
+                grade {r.best.grade} vs your {r.current.grade}
+              </span>
+            )}
           {!r.current.sigmaKnown && (
             <span
               className="amber"
@@ -1469,7 +1538,18 @@ function RotationVerdict({
               </tr>
             </thead>
             <tbody>
-              <tr className="rotation-current">
+              <tr
+                className="rotation-current clickable"
+                onClick={() =>
+                  poolActions(
+                    r.pair,
+                    r.current.poolId,
+                    r.current.address,
+                    r.current.chain,
+                    r.current.url,
+                  )
+                }
+              >
                 <td>
                   <strong>{r.pair}</strong>
                   <small>current · realised fees</small>
@@ -1491,7 +1571,13 @@ function RotationVerdict({
                 <td>—</td>
               </tr>
               {r.candidates.map((c) => (
-                <tr key={c.poolId}>
+                <tr
+                  key={c.poolId}
+                  className="clickable"
+                  onClick={() =>
+                    poolActions(c.pair, c.poolId, c.address, c.chain, c.url)
+                  }
+                >
                   <td>
                     <strong>{c.pair}</strong>
                     <small>
@@ -1502,9 +1588,11 @@ function RotationVerdict({
                   <td>{c.grade}</td>
                   <td>
                     {money(c.feeDay)}
-                    {c.feeDay7d != null && (
-                      <small>7d {money(c.feeDay7d)}</small>
-                    )}
+                    <small>
+                      24h {money(c.feeDay24h)}
+                      {c.feeDay7d != null ? ` · 7d ${money(c.feeDay7d)}` : ""}
+                      {c.spike ? " · spike" : ""}
+                    </small>
                   </td>
                   <td>{money(c.ilDay)}</td>
                   <td className={c.netDay >= 0 ? "positive" : "amber"}>
@@ -1553,9 +1641,11 @@ function RotationVerdict({
           )}
           <p className="fine-print rotation-note">
             Same {money(r.value)} in {r.candidates.length} best pools of this
-            profile. Fees assume the last 24 h repeats after your dilution; IL
-            is a σ²/8 estimate. Switch cost {money(r.cost)} covers exit, swaps
-            and re-entry.
+            profile. Fees are the lower of the 24 h and 7 d average after your
+            dilution; IL is a σ²/8 estimate. Switch cost {money(r.cost)} covers
+            exit, swaps and re-entry. The ranking is per dollar, so several
+            positions can point at the same pool — read the note above the list
+            before moving all of them.
           </p>
         </div>
       )}
@@ -1649,6 +1739,31 @@ function ResearchPanel({
   const rotationById = new Map(
     (rotations.data?.rows ?? []).map((r) => [r.id, r] as const),
   );
+  // Several ROTATE verdicts on one pool: the per-dollar ranking does not see the portfolio.
+  const concentration = (() => {
+    const rows = (rotations.data?.rows ?? []).filter(
+      (r) => r.kind === "rotate" && r.best,
+    );
+    const byPool = new Map<
+      string,
+      { pair: string; tvl: number; value: number; n: number }
+    >();
+    for (const r of rows) {
+      const b = r.best!;
+      const cur = byPool.get(b.poolId) ?? {
+        pair: b.pair,
+        tvl: b.tvl,
+        value: 0,
+        n: 0,
+      };
+      cur.value += r.value;
+      cur.n += 1;
+      byPool.set(b.poolId, cur);
+    }
+    const top = [...byPool.values()].sort((a, b) => b.n - a.n)[0];
+    if (!top || top.n < 2) return null;
+    return { ...top, share: top.value / (top.tvl + top.value) };
+  })();
   const [openRotation, setOpenRotation] = useState<string | null>(null);
   const ranked = (
     kind === "leaderboard" ? (resource.data?.rows ?? []) : []
@@ -1769,6 +1884,18 @@ function ResearchPanel({
             Owners
           </button>
         </div>
+      )}
+      {kind === "positions" && concentration && (
+        <p className="notice concentration" role="note">
+          <strong>
+            {concentration.n} verdicts point at {concentration.pair}.
+          </strong>{" "}
+          The ranking is per dollar, not per portfolio: moving all of them puts{" "}
+          {money(concentration.value)} into one pool
+          {concentration.share >= 0.05
+            ? ` — ${(concentration.share * 100).toFixed(1)}% of its liquidity after you enter, which the fee estimate does not survive.`
+            : ` (${(concentration.share * 100).toFixed(1)}% of its liquidity). Rotate one, watch a day, then decide on the next.`}
+        </p>
       )}
       {kind === "positions" ? (
         vaults.map((v) => (
