@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
   ArrowUpRight,
@@ -24,6 +24,8 @@ import { PairMark } from "./pair";
 import { request } from "@/lib/api";
 import { clearResources, useResource } from "@/lib/resource";
 import { StatusBar } from "@/components/statusbar";
+import { Pager } from "@/components/pager";
+import { usePagination } from "@/lib/paging";
 import { shortAddress } from "@/lib/siwe";
 import { protocolLabel } from "@/lib/pair";
 import { chains, profiles } from "@/lib/validation";
@@ -168,6 +170,10 @@ export function Workspace({
     .sort(
       (a, b) => Number(b[sort as keyof Pool]) - Number(a[sort as keyof Pool]),
     );
+  const paging = usePagination(
+    visible,
+    `${active}:${quote}:${protocol}:${sort}:${query}`,
+  );
   const pool = rows.find((p) => p.id === selected);
   const title = tabs.find((t) => t.id === active)?.label || "Pool screener";
   const total = visible.reduce((n, p) => n + p.tvl, 0);
@@ -545,7 +551,7 @@ export function Workspace({
                       </div>
                     ) : (
                       <div
-                        className="table-scroll"
+                        className="table-scroll standard"
                         role="region"
                         aria-label="Ranked liquidity pools"
                         tabIndex={0}
@@ -592,7 +598,7 @@ export function Workspace({
                             </tr>
                           </thead>
                           <tbody>
-                            {visible.map((p) => (
+                            {paging.rows.map((p) => (
                               <tr
                                 key={p.id}
                                 className={selected === p.id ? "selected" : ""}
@@ -665,19 +671,20 @@ export function Workspace({
                         </table>
                       </div>
                     )}
-                    <div className="table-footer">
-                      <span>
-                        {demo
-                          ? "Fixture snapshot · not live"
-                          : timestamp
-                            ? `Fetched ${new Date(timestamp * 1000).toLocaleTimeString()} · refreshes every 60s`
-                            : "Awaiting source"}{" "}
-                        · {settings.source}
-                      </span>
-                      <span>
-                        {visible.length} pair{visible.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
+                    <Pager
+                      paging={paging}
+                      unit="pairs"
+                      note={
+                        <>
+                          {demo
+                            ? "Fixture snapshot · not live"
+                            : timestamp
+                              ? `Fetched ${new Date(timestamp * 1000).toLocaleTimeString()} · refreshes every 60s`
+                              : "Awaiting source"}{" "}
+                          · {settings.source}
+                        </>
+                      }
+                    />
                   </div>
                   <div className="risk-note">
                     <ShieldCheck size={16} />
@@ -1212,10 +1219,18 @@ function ResearchPanel({
   const ranked = (
     kind === "leaderboard" ? (resource.data?.rows ?? []) : []
   ) as RankedVault[];
-  const owners: Owner[] = resource.data?.owners ?? [];
+  const owners: Owner[] = useMemo(
+    () => resource.data?.owners ?? [],
+    [resource.data],
+  );
+  const ownerPaging = usePagination(owners, `${kind}:${settings.chain}`);
+  const rankedPaging = usePagination(ranked, `${kind}:${settings.chain}`);
   const busy = resource.busy;
   const error = resource.error || reviewError;
   const time = resource.fetchedAt;
+  const boardNote = time
+    ? `Fetched ${new Date(time * 1000).toLocaleTimeString()} · refreshes every 5 min`
+    : "Awaiting source";
   useEffect(() => {
     generation.current++;
     setReview(null);
@@ -1414,91 +1429,98 @@ function ResearchPanel({
           </article>
         ))
       ) : boardView === "owners" ? (
-        <div
-          className="data-panel table-scroll"
-          role="region"
-          aria-label="Owner rankings"
-          tabIndex={0}
-        >
-          <table>
-            <thead>
-              <tr>
-                <th>OWNER</th>
-                <th>VAULTS</th>
-                <th>TVL</th>
-                <th>PNL</th>
-                <th>ROI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {owners.map((o) => (
-                <tr key={o.address}>
-                  <td>
-                    <strong>{o.name}</strong>
-                    <small>
-                      {o.address.slice(0, 8)}…{o.address.slice(-6)}
-                    </small>
-                  </td>
-                  <td>{o.vaults}</td>
-                  <td>{money(o.tvl, true)}</td>
-                  <td>{money(o.pnl)}</td>
-                  <td>{pct(o.roi)}</td>
+        <div className="data-panel">
+          <div
+            className="table-scroll standard"
+            role="region"
+            aria-label="Owner rankings"
+            tabIndex={0}
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>OWNER</th>
+                  <th>VAULTS</th>
+                  <th>TVL</th>
+                  <th>PNL</th>
+                  <th>ROI</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {ownerPaging.rows.map((o) => (
+                  <tr key={o.address}>
+                    <td>
+                      <strong>{o.name}</strong>
+                      <small>
+                        {o.address.slice(0, 8)}…{o.address.slice(-6)}
+                      </small>
+                    </td>
+                    <td>{o.vaults}</td>
+                    <td>{money(o.tvl, true)}</td>
+                    <td>{money(o.pnl)}</td>
+                    <td>{pct(o.roi)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {!owners.length && !busy && (
             <div className="empty">No owners meet the ranking criteria.</div>
           )}
+          <Pager paging={ownerPaging} unit="owners" note={boardNote} />
         </div>
       ) : (
-        <div
-          className="data-panel table-scroll"
-          role="region"
-          aria-label="Vault rankings"
-          tabIndex={0}
-        >
-          <table>
-            <thead>
-              <tr>
-                <th>VAULT</th>
-                <th>TVL</th>
-                <th>ROI</th>
-                <th>SHORTLIST</th>
-                <th>REVIEW</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ranked.map((r) => (
-                <tr key={r.vault.address}>
-                  <td>
-                    <strong>{r.vault.name}</strong>
-                    <small>
-                      {r.vault.address.slice(0, 8)}…{r.vault.address.slice(-6)}
-                    </small>
-                  </td>
-                  <td>{money(r.vault.tvl, true)}</td>
-                  <td>{pct(r.roi_pct)}</td>
-                  <td>
-                    {r.candidate ? (
-                      <span className="positive">Candidate</span>
-                    ) : (
-                      r.why_not[0]
-                    )}
-                  </td>
-                  <td>
-                    <button
-                      className="button secondary small"
-                      disabled={reviewBusy}
-                      onClick={() => inspect(r.vault)}
-                    >
-                      Review <ArrowUpRight size={14} />
-                    </button>
-                  </td>
+        <div className="data-panel">
+          <div
+            className="table-scroll standard"
+            role="region"
+            aria-label="Vault rankings"
+            tabIndex={0}
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>VAULT</th>
+                  <th>TVL</th>
+                  <th>ROI</th>
+                  <th>SHORTLIST</th>
+                  <th>REVIEW</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rankedPaging.rows.map((r) => (
+                  <tr key={r.vault.address}>
+                    <td>
+                      <strong>{r.vault.name}</strong>
+                      <small>
+                        {r.vault.address.slice(0, 8)}…
+                        {r.vault.address.slice(-6)}
+                      </small>
+                    </td>
+                    <td>{money(r.vault.tvl, true)}</td>
+                    <td>{pct(r.roi_pct)}</td>
+                    <td>
+                      {r.candidate ? (
+                        <span className="positive">Candidate</span>
+                      ) : (
+                        r.why_not[0]
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        className="button secondary small"
+                        disabled={reviewBusy}
+                        onClick={() => inspect(r.vault)}
+                      >
+                        Review <ArrowUpRight size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pager paging={rankedPaging} unit="vaults" note={boardNote} />
         </div>
       )}
       {reviewBusy && <p role="status">Reviewing vault evidence…</p>}
@@ -1520,10 +1542,9 @@ function ResearchPanel({
           ))}
         </section>
       )}
-      {time && (
+      {time && kind === "positions" && (
         <p className="fine-print">
-          Fetched {new Date(time * 1000).toLocaleString()} ·{" "}
-          {kind === "positions" ? "90-second" : "5-minute"} cache
+          Fetched {new Date(time * 1000).toLocaleString()} · refreshes every 60s
         </p>
       )}
     </div>

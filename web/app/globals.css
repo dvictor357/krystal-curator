@@ -1284,6 +1284,73 @@ select option {
   color: var(--muted);
   gap: 15px;
 }
+/* Standard table: fixed viewport height, sticky header, pager below. */
+.table-scroll.standard {
+  max-height: clamp(360px, calc(100dvh - 400px), 900px);
+  overflow: auto;
+}
+.table-scroll.standard thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.pager {
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  min-height: 46px;
+}
+.pager-note {
+  flex: 1;
+  min-width: 200px;
+}
+.pager-range {
+  color: var(--text);
+}
+.pager-size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pager-size select {
+  min-height: 28px;
+  padding: 2px 22px 2px 8px;
+  font-size: 9px;
+  font-family: var(--mono);
+  background-position: right 7px center;
+}
+.pager-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.pager-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+.pager-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line);
+}
+.pager-btn.current {
+  color: var(--amber);
+  border-color: #5a4218;
+}
+.pager-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.pager-gap {
+  padding: 0 4px;
+}
 .risk-note {
   display: flex;
   gap: 9px;
@@ -2703,6 +2770,12 @@ dd {
   color: var(--text);
 }
 @media (max-width: 720px) {
+  .table-scroll.standard {
+    max-height: none;
+  }
+  .pager-note {
+    flex-basis: 100%;
+  }
   .statusbar-summary {
     gap: 12px;
     padding: 0 14px;
