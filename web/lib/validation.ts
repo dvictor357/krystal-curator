@@ -21,8 +21,7 @@ export function validSettings(value: Record<string, unknown>) {
     profiles.includes(value.profile as (typeof profiles)[number]) &&
     typeof value.chain === "number" &&
     value.chain in chains &&
-    (value.source === "krystal" ||
-      (value.source === "rhpools" && value.chain === 4663)) &&
+    value.source === "krystal" &&
     typeof value.size === "number" &&
     Number.isFinite(value.size) &&
     value.size >= 1 &&

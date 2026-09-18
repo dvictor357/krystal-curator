@@ -83,7 +83,7 @@ export default function Home() {
               ))}
             </div>
             <span className="source-note">
-              Krystal + rhpools · scored independently
+              Krystal feed · scored independently
             </span>
           </div>
         </div>

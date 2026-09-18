@@ -1488,9 +1488,8 @@ SETTINGS: list[tuple[str, str, str, str, dict]] = [
         "pool_source",
         "pool feed",
         "choice",
-        {"options": ["krystal", "rhpools"], "restart": True},
+        {"options": ["krystal"], "restart": True},
     ),
-    ("FEED", "rhpools_url", "rhpools URL", "text", {"restart": True}),
     (
         "FEED",
         "images",

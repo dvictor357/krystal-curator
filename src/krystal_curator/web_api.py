@@ -42,7 +42,7 @@ Fresh = Annotated[bool, Query(description="Bypass the cache once (manual refresh
 
 
 def chain_check(chain: int, source: str = "krystal"):
-    if chain not in CHAIN_SLUG or (source == "rhpools" and chain != 4663):
+    if chain not in CHAIN_SLUG or source != "krystal":
         raise HTTPException(422, "Unsupported chain for this source.")
 
 
@@ -112,7 +112,7 @@ def pool_rows(pools: list[Pool], profile: str, quote: str, size: float):
 @app.get("/pools", dependencies=[Depends(market_user)])
 def pools(
     chain: int = 4663,
-    source: Literal["krystal", "rhpools"] = "krystal",
+    source: Literal["krystal"] = "krystal",
     profile: Literal["conservative", "balanced", "aggressive", "degen"] = "balanced",
     quote: Annotated[str, Query(max_length=20, pattern=r"^[A-Za-z0-9]*$")] = "USDG",
     size: Annotated[float, Query(ge=1, le=100_000_000, allow_inf_nan=False)] = 10000,
@@ -157,7 +157,7 @@ async def rotations(
     wallet: Annotated[str, Query(pattern=r"^0x[a-fA-F0-9]{40}$")],
     user: Annotated[User, Depends(market_user)],
     chain: int = 4663,
-    source: Literal["krystal", "rhpools"] = "krystal",
+    source: Literal["krystal"] = "krystal",
     profile: Literal["conservative", "balanced", "aggressive", "degen"] = "balanced",
     quote: Annotated[str, Query(max_length=20, pattern=r"^[A-Za-z0-9]*$")] = "USDG",
     fresh: Fresh = False,

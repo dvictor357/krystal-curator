@@ -56,9 +56,7 @@ def evaluate(
     live = {p.id for p in monitor.open_positions()}
     state = {k: v for k, v in monitor.pos_state.items() if k in live}  # closed ones drop out
     first = not previous
-    for row in web_rotation.rotation_rows(
-        user_vaults, pools, profile, quote=None if prefs.source == "rhpools" else "USDG"
-    ):
+    for row in web_rotation.rotation_rows(user_vaults, pools, profile, quote="USDG"):
         prev = previous.get(row["id"], {})
         best = row["best"] or {}
         if not first and row["kind"] == "rotate" and prev.get("kind") != "rotate":

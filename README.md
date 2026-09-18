@@ -55,35 +55,20 @@ The detail panel shows both token logos and clickable social links. Logo rendere
 
 ## Pool feeds
 
-`pool_source = "krystal"` (default) reads Krystal's public LP-explorer feed on any chain.
-`pool_source = "rhpools"` (or `--source rhpools`, `KRYSTAL_SOURCE=rhpools`) reads
-[robinhoodpools](https://github.com/wock9000/robinhoodpools), an open-source indexer that
-derives volume, fees, TVL and swap counts straight from Robinhood-chain events, USDG-quoted.
-Public instance `https://rhpools.lol`; point `rhpools_url` at `http://127.0.0.1:8196` for a
-local `rhpools` service. Robinhood (4663) only.
+`pool_source = "krystal"` (the only feed today) reads Krystal's public LP-explorer feed on
+any chain. Every refresh records the pool price, so once the TUI or daemon has ≥12 h of
+history for a pool, blanks fill in from it: `σ` becomes realised daily volatility over the
+last 7 days (same estimator as `backtest --sigma`), `dd24` the worst peak-to-trough move in
+the last 24 h (needs ≥6 h), and the row shows `σ~` instead. `scan` uses the same history if
+the daemon has been running. Windows a feed does not serve are marked unknown, not
+zero-filled: rows show `7D?`, yield takes a 0.75× haircut instead of the `min(24h, 7d)`
+rule, and SPIKE/FADING are not claimed.
 
-What changes with `rhpools`: swap counts (`TX24`) come free (no Cloud key); TVL for v4 pools is
-the value of *observed active liquidity* (`tvl_basis`), not manager balance; volatility,
-drawdown and LP-auto support are **unknown** — filters skip them, the risk grade assumes
-mid-band, and rows carry `σ?`. Every refresh records the pool price, so once the TUI or
-daemon has ≥12 h of history for a pool the blanks fill in from it: `σ` becomes realised
-daily volatility over the last 7 days (same estimator as `backtest --sigma`), `dd24` the
-worst peak-to-trough move in the last 24 h (needs ≥6 h), and the row shows `σ~` instead.
-`scan` uses the same history if the daemon has been running.
-
-**Reconcile.** `reconcile = true` (or `--reconcile`, `KRYSTAL_RECONCILE=1`) also fetches the
-*other* feed on every refresh and adds an `SRCΔ` column: how far the other feed's TVL is
-from the one you are looking at (`+50%` = other feed sees 50 % more; `v`/`f` suffix when
-only volume or fees were comparable; `-` = not listed there). Green < 5 %, yellow < 15 %,
-red beyond; sortable, and the detail panel shows all three deltas. Ramses CL pools have no
-chain-side twin. Expect big TVL gaps on v4: Krystal reports pool value, rhpools the value
-of *observed active liquidity*. The delta is a prompt to look, not a verdict. Against the public instance the tool is a polite guest:
-it asks for 1h and 24h only (7d / 30d time out there), one page of 150 pools each, one
-request at a time, and leaves a window that answered 5xx alone for an hour. Against a
-local `rhpools` (loopback URL) it asks for all four windows in parallel and retries after
-10 minutes; `rhpools_windows` / `KRYSTAL_RHPOOLS_WINDOWS` overrides either default.
-Windows not served are marked unknown, not zero-filled: rows show `7D?`, yield takes a
-0.75× haircut instead of the `min(24h, 7d)` rule, and SPIKE/FADING are not claimed.
+**Second source.** An earlier version could read a community chain indexer as a second feed
+and reconcile the two (`SRCΔ` column). That dependency was removed so the product stands
+on its own; `reconcile.py` and `reconcile = true` stay in place, dormant, for a first-party
+chain feed (`Swap` + pool identity straight from Robinhood-chain RPC) planned as the next
+data source. Until then `SRCΔ` is not shown.
 
 ## Reliability
 

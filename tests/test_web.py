@@ -134,11 +134,11 @@ async def test_postgres_accounts_isolated_and_sessions_revoked(monkeypatch):
                     "/account",
                     json={
                         "action": "settings",
-                        "settings": prefs | {"source": "rhpools", "chain": 1},
+                        "settings": prefs | {"source": "chain", "chain": 1},
                     },
                 )
             ).status_code == 422
-            assert (await alice.get("/pools?source=rhpools&chain=1")).status_code == 422
+            assert (await alice.get("/pools?source=chain&chain=1")).status_code == 422
             assert (await alice.post("/auth/logout")).status_code == 200
             alice.cookies.set("curator_session", token)
             assert (await alice.get("/account")).status_code == 401

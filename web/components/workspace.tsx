@@ -419,22 +419,6 @@ export function Workspace({
                         </select>
                       </label>
                       <label>
-                        <span>Source</span>
-                        <select
-                          aria-label="Source"
-                          disabled={demo}
-                          value={settings.source}
-                          onChange={(e) =>
-                            setSettings({ ...settings, source: e.target.value })
-                          }
-                        >
-                          <option value="krystal">Krystal</option>
-                          {settings.chain === 4663 && (
-                            <option value="rhpools">rhpools</option>
-                          )}
-                        </select>
-                      </label>
-                      <label>
                         <span>Risk profile</span>
                         <select
                           aria-label="Risk profile"
@@ -1151,17 +1135,6 @@ function SettingsForm({
               {v}
             </option>
           ))}
-        </select>
-      </label>
-      <label>
-        Data source
-        <select
-          disabled={demo}
-          value={draft.source}
-          onChange={(e) => setDraft({ ...draft, source: e.target.value })}
-        >
-          <option value="krystal">Krystal</option>
-          {draft.chain === 4663 && <option value="rhpools">rhpools</option>}
         </select>
       </label>
       <label>

@@ -20,7 +20,7 @@ test("reject invalid wallet, network/source combinations and nonfinite simulatio
   };
   assert.ok(validSettings(good));
   assert.equal(validSettings({ ...good, size: Infinity }), false);
-  assert.equal(validSettings({ ...good, chain: 1, source: "rhpools" }), false);
+  assert.equal(validSettings({ ...good, chain: 1, source: "chain" }), false);
   assert.equal(validSettings({ ...good, wallet: "not-an-address" }), false);
   assert.ok(validPoolId("4663:uniswapv4:0x" + "a".repeat(64)));
   assert.equal(validPoolId("4663:uniswapv4:0xabc"), false);

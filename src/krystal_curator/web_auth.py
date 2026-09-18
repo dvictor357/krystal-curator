@@ -232,7 +232,7 @@ class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     profile: Literal["conservative", "balanced", "aggressive", "degen"]
     chain: int
-    source: Literal["krystal", "rhpools"]
+    source: Literal["krystal"]
     size: float = Field(ge=1, le=100_000_000, allow_inf_nan=False)
     wallet: str = Field(pattern=r"^(0x[a-fA-F0-9]{40})?$", max_length=42)
     telegram_chat_id: str = Field(default="", pattern=r"^(-?\d{1,20})?$", max_length=32)
@@ -240,7 +240,7 @@ class Settings(BaseModel):
 
     @model_validator(mode="after")
     def valid_chain(self):
-        if self.chain not in CHAIN_SLUG or (self.source == "rhpools" and self.chain != 4663):
+        if self.chain not in CHAIN_SLUG:
             raise ValueError("Unsupported network for this source")
         return self
 

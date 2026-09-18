@@ -8,7 +8,7 @@ import random
 import pytest
 
 from krystal_curator import risk
-from krystal_curator.models import Pool
+from krystal_curator.models import Pool, Stat
 from krystal_curator.profiles import PROFILES
 from krystal_curator.scoring import flags_for, passes
 from krystal_curator.store import Store
@@ -19,18 +19,26 @@ NOW = 1_800_000_000
 def _pool(
     address: str, *, unknown=("volatility", "drawdown", "lp_auto"), price: float = 100.0
 ) -> Pool:
-    row = {
-        "id": address,
-        "protocol": "v3",
-        "fee_ppm": 3000,
-        "tvl_usd": 1e6,
-        "volume_usd": 2e6,
-        "fees_usd": 1500.0,
-        "swaps": 10,
-        "price": price,
-    }
-    p = Pool.from_rhpools({"24h": row}, chain_id=4663)
-    p.unknown = frozenset(unknown)
+    p = Pool(
+        chain_id=4663,
+        protocol="uniswapv3",
+        address=address,
+        token0="USDG",
+        token1="X",
+        fee_tier_pct=0.3,
+        tvl=1e6,
+        s1h=Stat(),
+        s24h=Stat(volume=2e6, fee=1500.0),
+        s7d=Stat(),
+        s30d=Stat(),
+        drawdown24h=0.0,
+        volatility=0.0,
+        lp_auto=False,
+        dynamic_fee=False,
+        tag="",
+        price_t0_in_t1=price,
+        unknown=frozenset(unknown),
+    )
     return p
 
 

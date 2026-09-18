@@ -27,7 +27,7 @@ def _pct(other: float, primary: float) -> float | None:
 
 @dataclass(slots=True, frozen=True)
 class Recon:
-    other: str  # the source compared against ("krystal" / "rhpools")
+    other: str  # the source compared against
     tvl_pct: float | None
     vol24_pct: float | None
     fee24_pct: float | None

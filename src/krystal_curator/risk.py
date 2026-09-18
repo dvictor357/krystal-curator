@@ -1,6 +1,6 @@
 """Realised σ / drawdown from local price snapshots, for feeds that report neither.
 
-rhpools gives a pool price per refresh but no volatility; Krystal gives `priceVolatility`
+A chain feed gives a pool price per refresh but no volatility; Krystal gives `priceVolatility`
 but its scale is only checked, never trusted blindly (`backtest --sigma`). Every refresh
 records `Pool.price` into the sqlite `snapshots` table, so after enough history the same
 variance-rate estimator the backtest uses can fill the blanks: `Pool.volatility` becomes
