@@ -26,7 +26,9 @@ export type Action = {
   hint?: string;
   href?: string;
   copy?: string;
-  kind: "copy" | "link";
+  run?: () => void | Promise<void>;
+  kind: "copy" | "link" | "run";
+  danger?: boolean;
 };
 
 export const isAddress = (v: string) => /^0x[0-9a-fA-F]{40}$/.test(v);

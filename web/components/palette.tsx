@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowUpRight, Check, Copy, Search } from "lucide-react";
+import { ArrowUpRight, Check, ChevronRight, Copy, Search } from "lucide-react";
 import type { Action } from "@/lib/links";
 
 export interface PaletteRequest {
@@ -61,6 +61,11 @@ function Palette({ req, close }: { req: PaletteRequest; close: () => void }) {
       } catch {
         setCopied(null);
       }
+      return;
+    }
+    if (a.kind === "run" && a.run) {
+      close();
+      await a.run();
       return;
     }
     if (a.href) window.open(a.href, "_blank", "noopener,noreferrer");
@@ -116,7 +121,7 @@ function Palette({ req, close }: { req: PaletteRequest; close: () => void }) {
               <button
                 role="option"
                 aria-selected={i === cursor}
-                className={`palette-item${i === cursor ? " active" : ""}`}
+                className={`palette-item${i === cursor ? " active" : ""}${a.danger ? " danger" : ""}`}
                 onMouseEnter={() => setCursor(i)}
                 onClick={() => run(a)}
               >
@@ -125,6 +130,8 @@ function Palette({ req, close }: { req: PaletteRequest; close: () => void }) {
                     <Check size={14} />
                   ) : a.kind === "copy" ? (
                     <Copy size={14} />
+                  ) : a.kind === "run" ? (
+                    <ChevronRight size={14} />
                   ) : (
                     <ArrowUpRight size={14} />
                   )}

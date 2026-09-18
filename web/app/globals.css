@@ -3256,9 +3256,6 @@ dd {
   font-weight: 400;
   letter-spacing: 0;
 }
-.account-chip {
-  margin: 8px 0 0 12px;
-}
 .detail-addresses {
   display: flex;
   flex-direction: column;
@@ -3383,6 +3380,10 @@ dd {
 .palette-item.active {
   background: var(--surface2);
   border-color: #5a4218;
+}
+.palette-item.danger .palette-icon {
+  color: #e2704a;
+  border-color: #4a2a20;
 }
 .palette-icon {
   width: 26px;

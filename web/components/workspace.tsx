@@ -1,5 +1,7 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { addressActions } from "@/lib/links";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
@@ -12,6 +14,7 @@ import {
   Layers3,
   LayoutGrid,
   LogOut,
+  MoreHorizontal,
   RefreshCw,
   Search,
   Settings2,
@@ -29,6 +32,7 @@ import { Pager } from "@/components/pager";
 import { AmbientField } from "@/components/ambient";
 import { PaletteProvider } from "@/components/palette";
 import { AddressChip, TokenLink } from "@/components/address";
+import { usePalette } from "@/components/palette";
 import { usePagination } from "@/lib/paging";
 import { shortAddress } from "@/lib/siwe";
 import { protocolLabel } from "@/lib/pair";
@@ -248,9 +252,11 @@ export function Workspace({
                 <ChevronRight size={16} />
               </Link>
             ) : (
-              <button
-                className="account-card"
-                onClick={() =>
+              <AccountCard
+                email={email}
+                address={address}
+                chain={settings.chain}
+                signOut={() =>
                   request("/api/auth/logout", { method: "POST" })
                     .then(() => {
                       clearResources();
@@ -259,27 +265,6 @@ export function Workspace({
                     })
                     .catch((e) => setNotice(e.message))
                 }
-              >
-                <span className="avatar">
-                  {email.startsWith("0x")
-                    ? "0x"
-                    : email.slice(0, 1).toUpperCase()}
-                </span>
-                <span className="account-email">
-                  {email}
-                  <small>Sign out</small>
-                </span>
-                <LogOut size={15} />
-              </button>
-            )}
-            {!demo && address && (
-              <AddressChip
-                address={address}
-                chain={settings.chain}
-                kind="wallet"
-                label="Your wallet"
-                className="account-chip"
-                text="copy · explorer · portfolio"
               />
             )}
           </div>
@@ -762,6 +747,59 @@ export function Workspace({
         </div>
       </div>
     </PaletteProvider>
+  );
+}
+/** Signed-in card: opens the wallet palette with Settings and Sign out at the end. */
+function AccountCard({
+  email,
+  address,
+  chain,
+  signOut,
+}: {
+  email: string;
+  address: string;
+  chain: number;
+  signOut: () => void;
+}) {
+  const open = usePalette();
+  const router = useRouter();
+  return (
+    <button
+      className="account-card"
+      onClick={() =>
+        open({
+          title: "Your account",
+          subtitle: address || email,
+          actions: [
+            ...(address ? addressActions("wallet", address, chain) : []),
+            {
+              id: "settings",
+              kind: "run",
+              label: "Settings",
+              hint: "profile · network · alerts",
+              run: () => router.push("/app/settings"),
+            },
+            {
+              id: "signout",
+              kind: "run",
+              label: "Sign out",
+              hint: "end this session",
+              run: signOut,
+              danger: true,
+            },
+          ],
+        })
+      }
+    >
+      <span className="avatar">
+        {email.startsWith("0x") ? "0x" : email.slice(0, 1).toUpperCase()}
+      </span>
+      <span className="account-email">
+        {email}
+        <small>Account · actions</small>
+      </span>
+      <MoreHorizontal size={15} />
+    </button>
   );
 }
 function SortHeader({
