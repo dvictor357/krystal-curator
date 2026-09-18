@@ -12,6 +12,7 @@ export function AddressChip({
   full = false,
   krystalUrl,
   className = "",
+  text,
 }: {
   address: string;
   chain: number;
@@ -20,6 +21,8 @@ export function AddressChip({
   full?: boolean;
   krystalUrl?: string;
   className?: string;
+  /** Replace the address with a caption (when the address is already shown nearby). */
+  text?: string;
 }) {
   const open = usePalette();
   if (!address) return null;
@@ -37,7 +40,7 @@ export function AddressChip({
         });
       }}
     >
-      <code>{full ? address : shorten(address)}</code>
+      <code>{text ?? (full ? address : shorten(address))}</code>
       <MoreHorizontal size={12} />
     </button>
   );

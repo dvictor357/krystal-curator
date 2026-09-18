@@ -269,17 +269,18 @@ export function Workspace({
                   {email}
                   <small>Sign out</small>
                 </span>
-                {address && (
-                  <AddressChip
-                    address={address}
-                    chain={settings.chain}
-                    kind="wallet"
-                    label="Your wallet"
-                    className="account-chip"
-                  />
-                )}
                 <LogOut size={15} />
               </button>
+            )}
+            {!demo && address && (
+              <AddressChip
+                address={address}
+                chain={settings.chain}
+                kind="wallet"
+                label="Your wallet"
+                className="account-chip"
+                text="copy · explorer · portfolio"
+              />
             )}
           </div>
         </aside>
