@@ -6,7 +6,7 @@ export const metadata: Metadata = {
     template: "%s | Curator",
   },
   description:
-    "An LP workspace for concentrated liquidity. Rank pairs by fees, depth, and risk. Private watchlist. No wallet signing.",
+    "An LP workspace for concentrated liquidity. Rank pairs by fees, depth, and risk. Private watchlist. Sign in with your wallet or email; no transactions.",
 };
 export default function RootLayout({
   children,
