@@ -1,4 +1,6 @@
-# krystal-curator
+# Curator
+
+**Web version:** the new Curator landing and multi-user workspace use Next.js + Python, PostgreSQL, Tortoise ORM, asyncpg and Aerich. See [web setup](web/README.md). The existing `krystal-curator` CLI remains compatible.
 
 Screener for LP pools listed on [Krystal](https://defi.krystal.app). Pulls the public
 LP-explorer feed, applies a selectable **risk profile**, scores pools on *real* fee
@@ -14,6 +16,8 @@ Default universe: Robinhood chain (4663), pools quoted in **USDG**, all protocol
 ```sh
 make setup            # uv sync, write config.toml + .env templates, open them
 make run              # TUI
+make web-api          # FastAPI/uvicorn for the web workspace (:8100)
+make web-ui           # Next.js frontend (:3000), other terminal
 make config           # show effective settings + where they came from
 make help             # every shortcut
 ```

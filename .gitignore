@@ -13,3 +13,12 @@ exports/
 reports/
 config.toml
 demo/frames/
+
+# Curator web
+web/node_modules/
+web/.next/
+web/.env.local
+web/tsconfig.tsbuildinfo
+web/test-results/
+web/playwright-report/
+.env.web
