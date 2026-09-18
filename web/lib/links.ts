@@ -111,7 +111,9 @@ export function addressActions(
       hint: "pools · volume",
       href: `https://www.geckoterminal.com/${dex}/tokens/${address}`,
     });
-  if ((kind === "wallet" || kind === "vault") && plain) {
+  // Portfolio trackers index wallets across the chains they support; a vault contract
+  // lives only on its own chain (Robinhood is not indexed there), so skip them for vaults.
+  if (kind === "wallet" && plain) {
     out.push({
       id: "debank",
       kind: "link",
