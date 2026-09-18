@@ -2123,6 +2123,7 @@ function ResearchPanel({
                       <button
                         className="button secondary small"
                         disabled={reviewBusy}
+                        title="Rule-based review: performance, instructions and risk checks against your limits → avoid / watch / worth testing"
                         onClick={() => inspect(r.vault)}
                       >
                         Review <ArrowUpRight size={14} />

@@ -3259,6 +3259,11 @@ dd {
   font-size: 9px;
   gap: 4px;
 }
+td > .address-chip.tiny {
+  display: flex;
+  width: fit-content;
+  margin-top: 5px;
+}
 .address-chip.inline {
   margin-left: 12px;
   vertical-align: middle;
