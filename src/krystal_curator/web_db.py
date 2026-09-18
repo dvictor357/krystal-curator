@@ -22,9 +22,12 @@ TORTOISE_ORM = {
 
 
 class User(models.Model):
+    """One of `email` + `password_hash` (local account) or `address` (SIWE) is set."""
+
     id = fields.UUIDField(primary_key=True)
-    email = fields.CharField(max_length=254, unique=True)
-    password_hash = fields.CharField(max_length=255)
+    email = fields.CharField(max_length=254, unique=True, null=True)
+    password_hash = fields.CharField(max_length=255, null=True)
+    address = fields.CharField(max_length=42, unique=True, null=True)  # EIP-55 checksummed
     created_at = fields.DatetimeField(auto_now_add=True)
 
     class Meta:
@@ -38,6 +41,16 @@ class Session(models.Model):
 
     class Meta:
         table = "curator_sessions"
+
+
+class Nonce(models.Model):
+    """Single-use SIWE challenge; consumed by the sign-in that presents it."""
+
+    nonce = fields.CharField(max_length=32, primary_key=True)
+    expires_at = fields.DatetimeField(db_index=True)
+
+    class Meta:
+        table = "curator_nonces"
 
 
 class Preferences(models.Model):

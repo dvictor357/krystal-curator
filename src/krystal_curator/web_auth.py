@@ -1,4 +1,4 @@
-"""Local account auth with Argon2 passwords and revocable opaque cookie sessions."""
+"""Account auth: Argon2 passwords or Sign-In with Ethereum, revocable opaque cookie sessions."""
 
 import hashlib
 import hmac
@@ -15,11 +15,13 @@ from starlette.concurrency import run_in_threadpool
 from tortoise.exceptions import IntegrityError
 from tortoise.transactions import in_transaction
 
+from . import web_siwe
 from .models import CHAIN_SLUG
-from .web_db import Preferences, RateLimit, Session, User, Watch
+from .web_db import Nonce, Preferences, RateLimit, Session, User, Watch
 
 COOKIE = "curator_session"
 SESSION_SECONDS = 7 * 24 * 3600
+NONCE_SECONDS = 5 * 60
 passwords = PasswordHash.recommended()
 # A missing account still verifies an Argon2 hash to avoid a fast email-enumeration path.
 _dummy_hash = passwords.hash(secrets.token_urlsafe(32))
@@ -76,11 +78,19 @@ class Credentials(BaseModel):
     password: str = Field(min_length=12, max_length=128)
 
 
-async def limit_login(request: Request, email: str):
+async def limit_login(request: Request, subject: str):
     # The private bridge overwrites this header; never trust a public forwarded IP.
     peer = request.headers.get("x-curator-client", "local")
     await throttle("auth-ip:" + hashlib.sha256(peer.encode()).hexdigest(), 30, 900)
-    await throttle("auth-email:" + hashlib.sha256(email.encode()).hexdigest(), 10, 900)
+    await throttle("auth-subject:" + hashlib.sha256(subject.encode()).hexdigest(), 10, 900)
+
+
+async def rotate_session(request: Request, response: Response, user: User):
+    # Rotate the session presented during a sign-in rather than retaining it.
+    old = request.cookies.get(COOKIE, "")
+    if old:
+        await Session.filter(token_hash=hashlib.sha256(old.encode()).hexdigest()).delete()
+    await issue_session(response, user)
 
 
 async def issue_session(response: Response, user: User):
@@ -121,16 +131,63 @@ async def login(body: Credentials, request: Request, response: Response):
     await limit_login(request, email)
     user = await User.get_or_none(email=email)
     valid = await run_in_threadpool(
-        passwords.verify, body.password, user.password_hash if user else _dummy_hash
+        passwords.verify, body.password, (user and user.password_hash) or _dummy_hash
     )
     if not user or not valid:
         raise HTTPException(401, "Email or password is incorrect.")
-    # Rotate the session presented during a login rather than retaining it.
-    old = request.cookies.get(COOKIE, "")
-    if old:
-        await Session.filter(token_hash=hashlib.sha256(old.encode()).hexdigest()).delete()
-    await issue_session(response, user)
+    await rotate_session(request, response, user)
     return {"email": user.email}
+
+
+@router.get("/auth/nonce")
+async def nonce(request: Request):
+    """Single-use challenge for Sign-In with Ethereum; the wallet signs it within 5 minutes."""
+    peer = request.headers.get("x-curator-client", "local")
+    await throttle("auth-ip:" + hashlib.sha256(peer.encode()).hexdigest(), 30, 900)
+    now = datetime.now(UTC)
+    await Nonce.filter(expires_at__lte=now).delete()
+    row = await Nonce.create(
+        nonce=secrets.token_hex(16), expires_at=now + timedelta(seconds=NONCE_SECONDS)
+    )
+    return {"nonce": row.nonce}
+
+
+class SignedMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(max_length=web_siwe.MAX_LENGTH)
+    signature: str = Field(pattern=r"^0x[a-fA-F0-9]{130}$")
+
+
+@router.post("/auth/siwe")
+async def siwe(body: SignedMessage, request: Request, response: Response):
+    """EIP-4361: parse, bind to our origin and a live nonce, recover the signer, sign in."""
+    try:
+        message = web_siwe.parse(body.message)
+    except web_siwe.SiweError as e:
+        raise HTTPException(422, str(e)) from None
+    await limit_login(request, message.address)
+    try:
+        # The bridge sets this header from its own configured origin; never from the client.
+        web_siwe.check_origin(message, request.headers.get("x-curator-origin", ""))
+        web_siwe.check_time(message)
+        web_siwe.verify_signature(body.message, message, body.signature)
+    except web_siwe.SiweError as e:
+        raise HTTPException(401, str(e)) from None
+    # Atomic consume: a replayed message finds its nonce gone.
+    consumed = await Nonce.filter(nonce=message.nonce, expires_at__gt=datetime.now(UTC)).delete()
+    if consumed != 1:
+        raise HTTPException(401, "Sign-in request expired. Please try again.")
+    user = await User.get_or_none(address=message.address)
+    if not user:
+        try:
+            user = await User.create(address=message.address)
+        except IntegrityError:
+            user = await User.get(address=message.address)
+        else:
+            # A wallet that signs in is the obvious wallet to monitor.
+            await Preferences.get_or_create(user=user, defaults={"wallet": message.address})
+    await rotate_session(request, response, user)
+    return {"address": user.address}
 
 
 @router.post("/auth/logout")
@@ -159,6 +216,7 @@ async def account(user: Annotated[User, Depends(current_user)]):
     )
     return {
         "email": user.email,
+        "address": user.address,
         "settings": preferences[0] if preferences else None,
         "watchlist": list(watched),
     }

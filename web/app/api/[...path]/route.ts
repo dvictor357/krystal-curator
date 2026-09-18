@@ -3,6 +3,8 @@ const allowed = new Map([
   ["auth/login", ["POST"]],
   ["auth/register", ["POST"]],
   ["auth/logout", ["POST"]],
+  ["auth/nonce", ["GET"]],
+  ["auth/siwe", ["POST"]],
   ["account", ["GET", "POST"]],
   ["market/pools", ["GET"]],
   ["market/positions", ["GET"]],
@@ -58,6 +60,8 @@ async function bridge(
         "Content-Type": "application/json",
         Cookie: req.headers.get("cookie") || "",
         "X-Curator-Client": peer,
+        // SIWE messages must be bound to this deployment, not to whatever the client claims.
+        "X-Curator-Origin": expectedOrigin,
       },
     });
     const payload = await response.json();

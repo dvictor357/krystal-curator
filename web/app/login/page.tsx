@@ -1,15 +1,34 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
-import { ArrowRight, ArrowLeft, KeyRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, ArrowLeft, KeyRound, Wallet } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { request } from "@/lib/api";
+import { signInWithWallet, walletAvailable } from "@/lib/siwe";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [register, setRegister] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [wallet, setWallet] = useState(false);
+  useEffect(() => setWallet(walletAvailable()), []);
+  async function connect() {
+    setBusy(true);
+    setMessage("");
+    try {
+      await signInWithWallet();
+      window.location.assign("/app");
+    } catch (e) {
+      setMessage(
+        e instanceof Error
+          ? e.message
+          : "Wallet sign-in failed. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -41,9 +60,24 @@ export default function Login() {
         <div className="eyebrow">Your LP workspace</div>
         <h1>{register ? "Create a workspace." : "Welcome back."}</h1>
         <p>
-          Save pairs, set a risk profile, and screen live pools. Email and
-          password only — no wallet connection.
+          Save pairs, set a risk profile, and screen live pools. Sign in with
+          your wallet, or with an email and password.
         </p>
+        <button
+          type="button"
+          className="button wallet-button"
+          disabled={busy}
+          onClick={connect}
+        >
+          <Wallet size={17} />
+          {wallet
+            ? "Sign in with wallet"
+            : "Sign in with wallet (none detected)"}
+        </button>
+        <small className="wallet-note">
+          Signature only. No transaction, gas, or token approval is requested.
+        </small>
+        <div className="login-divider">or</div>
         <form onSubmit={submit}>
           <label>
             Email address
@@ -74,7 +108,7 @@ export default function Login() {
               Use at least 12 characters. A unique passphrase works well.
             </small>
           )}
-          <button className="button" disabled={busy}>
+          <button className="button secondary" disabled={busy}>
             {busy
               ? "Please wait…"
               : register
@@ -101,7 +135,10 @@ export default function Login() {
         <Link href="/demo" className="text-link">
           Try the sample book first <ArrowRight size={15} />
         </Link>
-        <small>No wallet connection or transaction signature required.</small>
+        <small>
+          Email accounts need no wallet; wallet accounts never send a
+          transaction.
+        </small>
       </main>
     </div>
   );

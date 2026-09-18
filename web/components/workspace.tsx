@@ -22,6 +22,7 @@ import {
 import { Brand } from "./brand";
 import { PairMark } from "./pair";
 import { request } from "@/lib/api";
+import { shortAddress } from "@/lib/siwe";
 import { protocolLabel } from "@/lib/pair";
 import { chains, profiles } from "@/lib/validation";
 import { defaults, money, pct, type Pool, type Settings } from "@/lib/types";
@@ -85,7 +86,7 @@ export function Workspace({
     request("/api/account")
       .then((account) => {
         if (!cancelled) {
-          setEmail(account.email);
+          setEmail(account.email ?? shortAddress(account.address));
           setSettings(account.settings || defaults);
           setWatched(account.watchlist);
           setReady(true);
@@ -265,7 +266,11 @@ export function Workspace({
                   .catch((e) => setNotice(e.message))
               }
             >
-              <span className="avatar">{email.slice(0, 1).toUpperCase()}</span>
+              <span className="avatar">
+                {email.startsWith("0x")
+                  ? "0x"
+                  : email.slice(0, 1).toUpperCase()}
+              </span>
               <span className="account-email">
                 {email}
                 <small>Sign out</small>

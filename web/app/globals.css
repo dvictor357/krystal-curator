@@ -1374,6 +1374,33 @@ select option {
 .login-card p {
   font-size: 14px;
 }
+.login-card .wallet-button {
+  width: 100%;
+  gap: 12px;
+  margin-top: 26px;
+}
+.login-card .wallet-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
 .login-card form {
   display: flex;
   flex-direction: column;

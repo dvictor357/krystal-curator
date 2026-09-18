@@ -23,6 +23,7 @@ krystal-curator = "krystal_curator:main"
 web = [
     "aerich>=0.10.1",
     "email-validator>=2.3.0",
+    "eth-account>=0.13",
     "fastapi>=0.141.1",
     "pwdlib[argon2]>=0.3.1",
     "tortoise-orm[asyncpg]>=1.1.8",
