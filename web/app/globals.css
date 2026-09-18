@@ -1560,6 +1560,185 @@ form small {
   color: var(--text);
 }
 .wallet-dialog::backdrop,
+/* Motion: panel slide, page enter, row stagger */
+.detail-dialog[open] {
+  animation: panel-in 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.detail-dialog.closing {
+  animation: panel-out 0.2s ease-in both;
+}
+.detail-dialog[open]::backdrop {
+  animation: backdrop-in 0.26s ease-out both;
+}
+.detail-dialog.closing::backdrop {
+  animation: backdrop-out 0.2s ease-in both;
+}
+@keyframes panel-in {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes panel-out {
+  to {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+.page-enter {
+  animation: page-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pool-table tbody tr,
+.data-panel tbody tr,
+.position-row,
+.vault-card {
+  animation: row-in 0.32s ease-out both;
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pool-table tbody tr:nth-child(2),
+.data-panel tbody tr:nth-child(2),
+.position-row:nth-of-type(2) {
+  animation-delay: 18ms;
+}
+.pool-table tbody tr:nth-child(3),
+.data-panel tbody tr:nth-child(3),
+.position-row:nth-of-type(3) {
+  animation-delay: 36ms;
+}
+.pool-table tbody tr:nth-child(4),
+.data-panel tbody tr:nth-child(4),
+.position-row:nth-of-type(4) {
+  animation-delay: 54ms;
+}
+.pool-table tbody tr:nth-child(5),
+.data-panel tbody tr:nth-child(5),
+.position-row:nth-of-type(5) {
+  animation-delay: 72ms;
+}
+.pool-table tbody tr:nth-child(6),
+.data-panel tbody tr:nth-child(6),
+.position-row:nth-of-type(6) {
+  animation-delay: 90ms;
+}
+.pool-table tbody tr:nth-child(7),
+.data-panel tbody tr:nth-child(7),
+.position-row:nth-of-type(7) {
+  animation-delay: 108ms;
+}
+.pool-table tbody tr:nth-child(8),
+.data-panel tbody tr:nth-child(8),
+.position-row:nth-of-type(8) {
+  animation-delay: 126ms;
+}
+.pool-table tbody tr:nth-child(9),
+.data-panel tbody tr:nth-child(9),
+.position-row:nth-of-type(9) {
+  animation-delay: 144ms;
+}
+.pool-table tbody tr:nth-child(10),
+.data-panel tbody tr:nth-child(10),
+.position-row:nth-of-type(10) {
+  animation-delay: 162ms;
+}
+.pool-table tbody tr:nth-child(11),
+.data-panel tbody tr:nth-child(11),
+.position-row:nth-of-type(11) {
+  animation-delay: 180ms;
+}
+.pool-table tbody tr:nth-child(12),
+.data-panel tbody tr:nth-child(12),
+.position-row:nth-of-type(12) {
+  animation-delay: 198ms;
+}
+.pool-table tbody tr:nth-child(13),
+.data-panel tbody tr:nth-child(13),
+.position-row:nth-of-type(13) {
+  animation-delay: 216ms;
+}
+.pool-table tbody tr:nth-child(14),
+.data-panel tbody tr:nth-child(14),
+.position-row:nth-of-type(14) {
+  animation-delay: 234ms;
+}
+.pool-table tbody tr:nth-child(15),
+.data-panel tbody tr:nth-child(15),
+.position-row:nth-of-type(15) {
+  animation-delay: 252ms;
+}
+.pool-table tbody tr:nth-child(16),
+.data-panel tbody tr:nth-child(16),
+.position-row:nth-of-type(16) {
+  animation-delay: 270ms;
+}
+.pool-table tbody tr:nth-child(17),
+.data-panel tbody tr:nth-child(17),
+.position-row:nth-of-type(17) {
+  animation-delay: 288ms;
+}
+.pool-table tbody tr:nth-child(18),
+.data-panel tbody tr:nth-child(18),
+.position-row:nth-of-type(18) {
+  animation-delay: 306ms;
+}
+.pool-table tbody tr:nth-child(19),
+.data-panel tbody tr:nth-child(19),
+.position-row:nth-of-type(19) {
+  animation-delay: 324ms;
+}
+.pool-table tbody tr:nth-child(20),
+.data-panel tbody tr:nth-child(20),
+.position-row:nth-of-type(20) {
+  animation-delay: 342ms;
+}
+.ambient {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+.workspace-main,
+.landing-page > *:not(.ambient) {
+  position: relative;
+  z-index: 1;
+}
+.sidebar {
+  z-index: 2;
+}
 .detail-dialog::backdrop {
   background: #000a;
   backdrop-filter: blur(3px);
@@ -2775,6 +2954,15 @@ dd {
   }
   .pager-note {
     flex-basis: 100%;
+  }
+  .detail-dialog[open] {
+    animation-name: panel-in-mobile;
+  }
+  @keyframes panel-in-mobile {
+    from {
+      transform: translateY(30px);
+      opacity: 0;
+    }
   }
   .statusbar-summary {
     gap: 12px;

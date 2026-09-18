@@ -1,3 +1,4 @@
+import { AmbientField } from "@/components/ambient";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -18,7 +19,7 @@ export default function Home() {
   const pools = book.slice(0, 5);
   const rail = uniquePairs(book, 7);
   return (
-    <>
+    <div className="landing-page">
       <header className="site-header">
         <Brand />
         <nav aria-label="Main navigation">
@@ -32,6 +33,7 @@ export default function Home() {
           Open Curator
         </Link>
       </header>
+      <AmbientField density={52} />
       <main id="main">
         <section className="hero wrap">
           <div className="hero-copy">
@@ -58,7 +60,7 @@ export default function Home() {
             </div>
             <div className="hero-note">
               <span>Read-only analytics</span>
-              <span>No wallet signing</span>
+              <span>Signature-only sign-in, never a transaction</span>
             </div>
           </div>
           <div className="hero-art">
@@ -231,6 +233,6 @@ export default function Home() {
         </a>
         <span className="mono">© {new Date().getFullYear()} Curator</span>
       </footer>
-    </>
+    </div>
   );
 }

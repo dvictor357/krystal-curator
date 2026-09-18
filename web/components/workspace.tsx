@@ -25,6 +25,7 @@ import { request } from "@/lib/api";
 import { clearResources, useResource } from "@/lib/resource";
 import { StatusBar } from "@/components/statusbar";
 import { Pager } from "@/components/pager";
+import { AmbientField } from "@/components/ambient";
 import { usePagination } from "@/lib/paging";
 import { shortAddress } from "@/lib/siwe";
 import { protocolLabel } from "@/lib/pair";
@@ -184,6 +185,7 @@ export function Workspace({
   }
   return (
     <div className="workspace">
+      <AmbientField />
       <aside className="sidebar">
         <Brand />
         <div className="workspace-label">
@@ -290,7 +292,7 @@ export function Workspace({
             <LogOut size={14} /> Sign out
           </button>
         )}
-        <main id="main" className="app-content">
+        <main id="main" className="app-content page-enter" key={active}>
           {demo && (
             <div className="demo-banner">
               <span>
@@ -796,6 +798,7 @@ function PoolDetail({
   close: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [closing, setClosing] = useState(false);
   useEffect(() => {
     const el = dialog.current;
     el?.showModal();
@@ -803,13 +806,32 @@ function PoolDetail({
       el?.close();
     };
   }, []);
+  // Play the slide-out, then let the parent unmount us.
+  function dismiss() {
+    if (closing) return;
+    setClosing(true);
+    const el = dialog.current;
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (!el || reduced) return close();
+    const done = () => {
+      el.removeEventListener("animationend", done);
+      close();
+    };
+    el.addEventListener("animationend", done);
+    window.setTimeout(done, 400); // safety if the animation never fires
+  }
   return (
     <dialog
       ref={dialog}
-      className="detail-dialog"
-      onCancel={close}
+      className={`detail-dialog${closing ? " closing" : ""}`}
+      onCancel={(e) => {
+        e.preventDefault();
+        dismiss();
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) close();
+        if (e.target === e.currentTarget) dismiss();
       }}
     >
       <div className="detail-inner">
@@ -819,7 +841,7 @@ function PoolDetail({
             <button
               autoFocus
               className="icon-button"
-              onClick={close}
+              onClick={dismiss}
               aria-label="Close pool details"
             >
               <X size={20} />
