@@ -447,7 +447,9 @@ export function Workspace({
                           }
                         >
                           {profiles.map((p) => (
-                            <option key={p}>{p}</option>
+                            <option key={p} value={p}>
+                              {p.charAt(0).toUpperCase() + p.slice(1)}
+                            </option>
                           ))}
                         </select>
                       </label>
@@ -1125,7 +1127,9 @@ function SettingsForm({
           onChange={(e) => setDraft({ ...draft, profile: e.target.value })}
         >
           {profiles.map((p) => (
-            <option key={p}>{p}</option>
+            <option key={p} value={p}>
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </option>
           ))}
         </select>
       </label>
