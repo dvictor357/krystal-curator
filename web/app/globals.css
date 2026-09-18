@@ -2155,6 +2155,108 @@ dd {
 .range-bar {
   min-width: 0;
 }
+/* Rotation verdict under each position */
+.rotation {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+.rotation-pending {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+}
+.rotation-line {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: #0b0d09;
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.rotation-line:hover {
+  border-color: var(--muted);
+}
+.rotation-line.rotate {
+  border-color: #3b4d33;
+}
+.rotation-line.consider {
+  border-color: #5a4218;
+}
+.rotation-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rotation-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.rotation-chevron {
+  transition: transform 0.2s;
+}
+.rotation-chevron.open {
+  transform: rotate(90deg);
+}
+.verdict-pill {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.verdict-pill.rotate {
+  color: #0e100c;
+  background: var(--green);
+  border-color: var(--green);
+}
+.verdict-pill.consider {
+  color: var(--amber);
+  border-color: #5a4218;
+}
+.rotation-table {
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: #0b0d09;
+  animation: page-in 0.2s ease-out both;
+}
+.rotation-table table {
+  font-size: 10px;
+}
+.rotation-table th {
+  padding: 9px 12px;
+  font-size: 8px;
+}
+.rotation-table td {
+  padding: 8px 12px;
+}
+.rotation-table td strong {
+  font-size: 12px;
+}
+.rotation-table td small {
+  color: var(--muted);
+}
+.rotation-current td {
+  background: #11130f;
+}
+.rotation-note {
+  padding: 10px 12px;
+  margin: 0;
+}
 .range-track {
   position: relative;
   height: 6px;
@@ -2882,6 +2984,13 @@ dd {
   .position-id,
   .range-bar {
     grid-column: 1 / -1;
+  }
+  .rotation-line {
+    flex-wrap: wrap;
+  }
+  .rotation-text {
+    white-space: normal;
+    flex-basis: 100%;
   }
   .empty {
     padding: 35px 18px;

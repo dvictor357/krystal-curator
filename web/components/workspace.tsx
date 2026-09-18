@@ -1168,6 +1168,200 @@ function RangeBar({ p }: { p: VaultPosition }) {
     </div>
   );
 }
+type Candidate = {
+  pair: string;
+  poolId: string;
+  protocol: string;
+  grade: string;
+  feeDay: number;
+  feeDay7d: number | null;
+  ilDay: number;
+  netDay: number;
+  share: number;
+  upliftDay: number;
+  paybackDays: number | null;
+  sigmaKnown: boolean;
+};
+type RotationRow = {
+  id: string;
+  pair: string;
+  value: number;
+  cost: number;
+  kind: "rotate" | "consider" | "stay" | "none";
+  verdict: string;
+  current: {
+    grade: string | null;
+    feeDay: number;
+    ilDay: number | null;
+    netDay: number;
+    share: number | null;
+    sigmaKnown: boolean;
+    inScreener: boolean;
+  };
+  best: {
+    pair: string;
+    poolId: string;
+    upliftDay: number;
+    paybackDays: number | null;
+  } | null;
+  edge: {
+    name: string;
+    distPct: number;
+    sigmas: number | null;
+    days: number | null;
+    urgency: string;
+  } | null;
+  candidates: Candidate[];
+};
+function days(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  if (value < 0.1) return "<0.1 d";
+  return `${value.toFixed(1)} d`;
+}
+/** Verdict line under a position; expands into the candidate table. */
+function RotationVerdict({
+  r,
+  open,
+  toggle,
+}: {
+  r: RotationRow;
+  open: boolean;
+  toggle: () => void;
+}) {
+  const label =
+    r.kind === "rotate"
+      ? "Rotate"
+      : r.kind === "consider"
+        ? "Consider"
+        : r.kind === "stay"
+          ? "Stay"
+          : "No candidate";
+  return (
+    <div className="rotation">
+      <button
+        className={`rotation-line ${r.kind}`}
+        onClick={toggle}
+        aria-expanded={open}
+      >
+        <span className={`verdict-pill ${r.kind}`}>{label}</span>
+        <span className="rotation-text">
+          {r.best && r.kind !== "none" ? (
+            <>
+              {r.kind === "stay" ? "Best alternative " : "→ "}
+              <b>{r.best.pair}</b>
+              {" · "}
+              <span className={r.best.upliftDay > 0 ? "positive" : "amber"}>
+                {signed(r.best.upliftDay)}/d
+              </span>
+              {r.best.paybackDays != null && (
+                <> · pays back in {days(r.best.paybackDays)}</>
+              )}
+            </>
+          ) : (
+            r.verdict
+          )}
+        </span>
+        <span className="rotation-meta">
+          {!r.current.sigmaKnown && (
+            <span
+              className="amber"
+              title="Current pool volatility unknown; IL estimate is neutral"
+            >
+              σ?
+            </span>
+          )}
+          {r.edge && r.edge.urgency !== "ok" && r.edge.urgency !== "?" && (
+            <span className={r.edge.urgency === "CRITICAL" ? "amber" : ""}>
+              {r.edge.name} edge {r.edge.distPct.toFixed(1)}%
+              {r.edge.sigmas != null ? ` ≈ ${r.edge.sigmas.toFixed(1)}σ` : ""}
+            </span>
+          )}
+          <span>switch cost {money(r.cost)}</span>
+          <ChevronRight
+            size={12}
+            className={`rotation-chevron${open ? " open" : ""}`}
+          />
+        </span>
+      </button>
+      {open && (
+        <div className="table-scroll rotation-table">
+          <table>
+            <thead>
+              <tr>
+                <th>POOL</th>
+                <th>GRADE</th>
+                <th>FEES/D</th>
+                <th>IL/D</th>
+                <th>NET/D</th>
+                <th>SHARE</th>
+                <th>UPLIFT</th>
+                <th>PAYBACK</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="rotation-current">
+                <td>
+                  <strong>{r.pair}</strong>
+                  <small>current · realised fees</small>
+                </td>
+                <td>{r.current.grade ?? "—"}</td>
+                <td>{money(r.current.feeDay)}</td>
+                <td>
+                  {r.current.ilDay == null ? "—" : money(r.current.ilDay)}
+                </td>
+                <td className={r.current.netDay >= 0 ? "positive" : "amber"}>
+                  {signed(r.current.netDay)}
+                </td>
+                <td>
+                  {r.current.share == null
+                    ? "—"
+                    : `${(r.current.share * 100).toFixed(1)}%`}
+                </td>
+                <td>—</td>
+                <td>—</td>
+              </tr>
+              {r.candidates.map((c) => (
+                <tr key={c.poolId}>
+                  <td>
+                    <strong>{c.pair}</strong>
+                    <small>
+                      {protocolLabel(c.protocol)}
+                      {!c.sigmaKnown ? " · σ?" : ""}
+                    </small>
+                  </td>
+                  <td>{c.grade}</td>
+                  <td>
+                    {money(c.feeDay)}
+                    {c.feeDay7d != null && (
+                      <small>7d {money(c.feeDay7d)}</small>
+                    )}
+                  </td>
+                  <td>{money(c.ilDay)}</td>
+                  <td className={c.netDay >= 0 ? "positive" : "amber"}>
+                    {signed(c.netDay)}
+                  </td>
+                  <td className={c.share > 0.25 ? "amber" : ""}>
+                    {(c.share * 100).toFixed(1)}%
+                  </td>
+                  <td className={c.upliftDay > 0 ? "positive" : "amber"}>
+                    {signed(c.upliftDay)}
+                  </td>
+                  <td>{days(c.paybackDays)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="fine-print rotation-note">
+            Same {money(r.value)} in {r.candidates.length} best pools of this
+            profile. Fees assume the last 24 h repeats after your dilution; IL
+            is a σ²/8 estimate. Switch cost {money(r.cost)} covers exit, swaps
+            and re-entry.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 type Vault = {
   address: string;
   name: string;
@@ -1241,6 +1435,21 @@ function ResearchPanel({
   const vaults = (
     kind === "positions" ? (resource.data?.rows ?? []) : []
   ) as Vault[];
+  const rotations = useResource<{ rows: RotationRow[]; fetchedAt: number }>(
+    kind === "positions" && path
+      ? `/api/market/rotations?${new URLSearchParams({
+          chain: String(settings.chain),
+          wallet: settings.wallet,
+          source: settings.source,
+          profile: settings.profile,
+        })}`
+      : null,
+    { ttl: 60, interval: 60 },
+  );
+  const rotationById = new Map(
+    (rotations.data?.rows ?? []).map((r) => [r.id, r] as const),
+  );
+  const [openRotation, setOpenRotation] = useState<string | null>(null);
   const ranked = (
     kind === "leaderboard" ? (resource.data?.rows ?? []) : []
   ) as RankedVault[];
@@ -1263,7 +1472,10 @@ function ResearchPanel({
     setReviewError("");
   }, [path]);
   useEffect(() => {
-    if (refresh && path) resource.refresh();
+    if (refresh && path) {
+      resource.refresh();
+      rotations.refresh();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh]);
   async function inspect(v: Vault) {
@@ -1448,6 +1660,26 @@ function ResearchPanel({
                       {p.fee_apr ? ` · ${p.fee_apr.toFixed(1)}% APR` : ""}
                     </small>
                   </div>
+                  {(() => {
+                    const r = rotationById.get(p.id);
+                    if (r)
+                      return (
+                        <RotationVerdict
+                          r={r}
+                          open={openRotation === p.id}
+                          toggle={() =>
+                            setOpenRotation(openRotation === p.id ? null : p.id)
+                          }
+                        />
+                      );
+                    if (rotations.busy && inRange)
+                      return (
+                        <div className="rotation rotation-pending">
+                          Weighing alternatives…
+                        </div>
+                      );
+                    return null;
+                  })()}
                 </div>
               );
             })}

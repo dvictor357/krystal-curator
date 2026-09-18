@@ -8,6 +8,7 @@ const allowed = new Map([
   ["account", ["GET", "POST"]],
   ["market/pools", ["GET"]],
   ["market/positions", ["GET"]],
+  ["market/rotations", ["GET"]],
   ["market/leaderboard", ["GET"]],
   ["market/review", ["GET"]],
 ]);

@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from tortoise.contrib.fastapi import RegisterTortoise
 
-from . import api, leaderboard, vaults
+from . import api, leaderboard, vaults, web_rotation
 from .models import CHAIN_SLUG, Pool
 from .position import simulate
 from .profiles import PROFILES
@@ -229,6 +229,35 @@ def positions(
         "rows": finite([asdict(v) | {"url": v.url} for v in entry.value]),
         "fetchedAt": entry.at,
     }
+
+
+@app.get("/rotations", dependencies=[Depends(market_user)])
+def rotations(
+    wallet: Annotated[str, Query(pattern=r"^0x[a-fA-F0-9]{40}$")],
+    chain: int = 4663,
+    source: Literal["krystal", "rhpools"] = "krystal",
+    profile: Literal["conservative", "balanced", "aggressive", "degen"] = "balanced",
+    quote: Annotated[str, Query(max_length=20, pattern=r"^[A-Za-z0-9]*$")] = "USDG",
+    fresh: Fresh = False,
+    response: Response = None,
+):
+    """Opportunity cost per open position: same dollars in the profile's best pools."""
+    chain_check(chain, source)
+    positions_entry, meta = store.get(
+        ("positions", chain, wallet.lower()),
+        lambda: vaults.fetch_vaults(wallet, chain_id=chain),
+        fresh=fresh,
+    )
+    pools_entry, pools_meta = store.get(
+        ("pools", chain, source), lambda: api.fetch_pools(chain, source=source), fresh=fresh
+    )
+    if pools_meta.cache == "miss":
+        meta = Meta(meta.cache, meta.age, meta.upstream_ms + pools_meta.upstream_ms)
+    meta.apply(response, 60)
+    rows = web_rotation.rotation_rows(
+        positions_entry.value, pools_entry.value, PROFILES[profile], quote=quote or None
+    )
+    return {"rows": finite(rows), "fetchedAt": min(positions_entry.at, pools_entry.at)}
 
 
 @app.get("/leaderboard", dependencies=[Depends(market_user)])

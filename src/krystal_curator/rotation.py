@@ -11,6 +11,7 @@ from .profiles import RiskProfile
 from .scoring import Scored, curate
 
 ROTATE_COST_PCT = 0.3  # % of value burned by exiting + re-entering (swaps, slippage, gas)
+MIN_UPLIFT_DAY = 0.05  # USD/day below which a "better" pool is noise, not a rotation
 
 
 @dataclass(slots=True, frozen=True)
@@ -38,11 +39,25 @@ class Rotation:
         return self.candidates[0] if self.candidates else None
 
     @property
+    def kind(self) -> str:
+        """Machine form of `verdict`: rotate / consider / stay / none."""
+        b = self.best
+        if b is None:
+            return "none"
+        if b.uplift_day < MIN_UPLIFT_DAY or b.payback_days is None:
+            return "stay"
+        if b.payback_days <= 3:
+            return "rotate"
+        if b.payback_days <= 14:
+            return "consider"
+        return "stay"
+
+    @property
     def verdict(self) -> str:
         b = self.best
         if b is None:
             return "no candidate passes the profile"
-        if b.uplift_day <= 0:
+        if b.uplift_day < MIN_UPLIFT_DAY:
             return "STAY — nothing in this profile beats the current position"
         if b.payback_days is not None and b.payback_days <= 3:
             pb = "<0.1d" if b.payback_days < 0.1 else f"{b.payback_days:.1f}d"
