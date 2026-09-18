@@ -1753,7 +1753,10 @@ dd {
 .position-head,
 .position-row {
   display: grid;
-  grid-template-columns: minmax(200px, 1.3fr) minmax(220px, 1.6fr) repeat(3, minmax(120px, 1fr));
+  grid-template-columns: minmax(200px, 1.3fr) minmax(220px, 1.6fr) repeat(
+      3,
+      minmax(120px, 1fr)
+    );
   gap: 22px;
   align-items: center;
 }
