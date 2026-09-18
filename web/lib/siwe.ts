@@ -2,21 +2,10 @@ import { getAddress, toHex, type EIP1193Provider } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import { request } from "@/lib/api";
 
-declare global {
-  interface Window {
-    ethereum?: EIP1193Provider;
-  }
-}
-
-export function walletAvailable() {
-  return typeof window !== "undefined" && Boolean(window.ethereum);
-}
-
-/** EIP-4361 sign-in with the injected wallet: nonce → personal_sign → session cookie. */
-export async function signInWithWallet(): Promise<string> {
-  const provider = window.ethereum;
-  if (!provider)
-    throw new Error("No wallet found. Install a browser wallet and try again.");
+/** EIP-4361 sign-in with the chosen wallet: nonce → personal_sign → session cookie. */
+export async function signInWithWallet(
+  provider: EIP1193Provider,
+): Promise<string> {
   const [account] = (await provider.request({
     method: "eth_requestAccounts",
   })) as string[];
@@ -36,10 +25,18 @@ export async function signInWithWallet(): Promise<string> {
     issuedAt: new Date(),
     expirationTime: new Date(Date.now() + 5 * 60 * 1000),
   });
-  const signature = (await provider.request({
-    method: "personal_sign",
-    params: [toHex(message), address],
-  })) as string;
+  let signature: string;
+  try {
+    signature = (await provider.request({
+      method: "personal_sign",
+      params: [toHex(message), address],
+    })) as string;
+  } catch (e) {
+    // EIP-1193 user rejection; other provider errors keep their own text.
+    if ((e as { code?: number })?.code === 4001)
+      throw new Error("Signature request was rejected in the wallet.");
+    throw e;
+  }
   await request("/api/auth/siwe", {
     method: "POST",
     body: JSON.stringify({ message, signature }),

@@ -57,7 +57,7 @@ The initial migration was generated with `uv run --extra web aerich init-db` aga
 
 - `/`: landing with original generated observatory illustration.
 - `/demo`: sample screener, filters, pool details and session-only watchlist.
-- `/login`: Sign-In with Ethereum (EIP-4361, injected wallet, `personal_sign` of a server nonce; EOA only, no EIP-1271) or email/password registration and login, without a hosted identity service. A wallet account's monitored wallet defaults to the signing address.
+- `/login`: Sign-In with Ethereum (EIP-4361; wallets discovered via EIP-6963 with `window.ethereum` as fallback, custom picker; `personal_sign` of a server nonce; EOA only, no EIP-1271) or email/password registration and login, without a hosted identity service. A wallet account's monitored wallet defaults to the signing address.
 - `/app`: live pool screener; profile, network and provider selection; pool details and simulation.
 - `/app/watchlist`: saved pools within the selected network/profile. A saved pool filtered out by the risk profile is not deleted.
 - `/app/positions`: public Krystal vault positions for the saved wallet, not standalone LP NFTs.

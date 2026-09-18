@@ -1,33 +1,22 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowRight, ArrowLeft, KeyRound, Wallet } from "lucide-react";
 import { Brand } from "@/components/brand";
+import { WalletPicker } from "@/components/wallet-picker";
 import { request } from "@/lib/api";
-import { signInWithWallet, walletAvailable } from "@/lib/siwe";
+import { signInWithWallet } from "@/lib/siwe";
+import type { WalletOption } from "@/lib/wallets";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [register, setRegister] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [wallet, setWallet] = useState(false);
-  useEffect(() => setWallet(walletAvailable()), []);
-  async function connect() {
-    setBusy(true);
-    setMessage("");
-    try {
-      await signInWithWallet();
-      window.location.assign("/app");
-    } catch (e) {
-      setMessage(
-        e instanceof Error
-          ? e.message
-          : "Wallet sign-in failed. Please try again.",
-      );
-    } finally {
-      setBusy(false);
-    }
+  const [picker, setPicker] = useState(false);
+  async function connect(wallet: WalletOption) {
+    await signInWithWallet(wallet.provider);
+    window.location.assign("/app");
   }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -67,13 +56,14 @@ export default function Login() {
           type="button"
           className="button wallet-button"
           disabled={busy}
-          onClick={connect}
+          onClick={() => setPicker(true)}
         >
           <Wallet size={17} />
-          {wallet
-            ? "Sign in with wallet"
-            : "Sign in with wallet (none detected)"}
+          Sign in with wallet
         </button>
+        {picker && (
+          <WalletPicker connect={connect} close={() => setPicker(false)} />
+        )}
         <small className="wallet-note">
           Signature only. No transaction, gas, or token approval is requested.
         </small>
