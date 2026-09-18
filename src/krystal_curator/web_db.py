@@ -78,6 +78,29 @@ class Watch(models.Model):
         unique_together = (("user", "pool_id"),)
 
 
+class Verdict(models.Model):
+    """Rotation verdict as shown to a user; the track record compares it with what followed."""
+
+    id = fields.IntField(primary_key=True)
+    user = fields.ForeignKeyField("models.User", related_name="verdicts", on_delete=fields.CASCADE)
+    position_id = fields.CharField(max_length=120)
+    pair = fields.CharField(max_length=60)
+    kind = fields.CharField(max_length=10)  # rotate / consider / stay / none
+    best_pool = fields.CharField(max_length=60, default="")
+    best_pool_id = fields.CharField(max_length=180, default="")
+    uplift_day = fields.FloatField(default=0)
+    payback_days = fields.FloatField(null=True)
+    value = fields.FloatField()
+    current_net_day = fields.FloatField()
+    fees_total = fields.FloatField()  # position fees (claimed + pending) at that moment
+    age_days = fields.FloatField()
+    at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "curator_verdicts"
+        indexes = (("user", "position_id", "at"),)
+
+
 class RateLimit(models.Model):
     key = fields.CharField(max_length=80, primary_key=True)
     window = fields.BigIntField()

@@ -2257,6 +2257,22 @@ dd {
   padding: 10px 12px;
   margin: 0;
 }
+.rotation-record {
+  margin: 0;
+  padding: 12px 12px 4px;
+  font-size: 11px;
+  line-height: 1.7;
+  border-top: 1px solid var(--line);
+}
+.rotation-record .eyebrow {
+  display: inline-flex;
+  margin-right: 10px;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
 .range-track {
   position: relative;
   height: 6px;

@@ -1212,7 +1212,27 @@ type RotationRow = {
     urgency: string;
   } | null;
   candidates: Candidate[];
+  history: {
+    since: number;
+    count: number;
+    previous: { kind: string; bestPool: string; at: number } | null;
+    outcome: {
+      at: number;
+      days: number;
+      kind: string;
+      bestPool: string;
+      predictedNetDay: number;
+      predictedUpliftDay: number;
+      realisedFeeDay: number;
+    } | null;
+  } | null;
 };
+function agoShort(ts: number) {
+  const s = Date.now() / 1000 - ts;
+  if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min`;
+  if (s < 86400) return `${Math.round(s / 3600)} h`;
+  return `${Math.round(s / 86400)} d`;
+}
 function days(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "—";
   if (value < 0.1) return "<0.1 d";
@@ -1274,6 +1294,11 @@ function RotationVerdict({
             <span className={r.edge.urgency === "CRITICAL" ? "amber" : ""}>
               {r.edge.name} edge {r.edge.distPct.toFixed(1)}%
               {r.edge.sigmas != null ? ` ≈ ${r.edge.sigmas.toFixed(1)}σ` : ""}
+            </span>
+          )}
+          {r.history && r.history.count > 1 && (
+            <span title={`Same verdict for ${agoShort(r.history.since)}`}>
+              since {agoShort(r.history.since)}
             </span>
           )}
           <span>switch cost {money(r.cost)}</span>
@@ -1351,6 +1376,36 @@ function RotationVerdict({
               ))}
             </tbody>
           </table>
+          {r.history?.outcome && (
+            <p className="rotation-record">
+              <span className="eyebrow">Track record</span>
+              {agoShort(r.history.outcome.at)} ago we said{" "}
+              <b>{r.history.outcome.kind.toUpperCase()}</b>
+              {r.history.outcome.bestPool && r.history.outcome.kind !== "stay"
+                ? ` → ${r.history.outcome.bestPool} (+${money(r.history.outcome.predictedUpliftDay)}/d)`
+                : ""}
+              , expecting {signed(r.history.outcome.predictedNetDay)}/d net from
+              staying. Since then this position earned{" "}
+              <b
+                className={
+                  r.history.outcome.realisedFeeDay >=
+                  r.history.outcome.predictedNetDay
+                    ? "positive"
+                    : "amber"
+                }
+              >
+                {money(r.history.outcome.realisedFeeDay)}/d
+              </b>{" "}
+              in fees over {r.history.outcome.days.toFixed(1)} d.
+              {r.history.previous && (
+                <>
+                  {" "}
+                  Before that: {r.history.previous.kind} (
+                  {agoShort(r.history.previous.at)} ago).
+                </>
+              )}
+            </p>
+          )}
           <p className="fine-print rotation-note">
             Same {money(r.value)} in {r.candidates.length} best pools of this
             profile. Fees assume the last 24 h repeats after your dilution; IL

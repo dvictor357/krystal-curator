@@ -11,15 +11,16 @@ from threading import Lock, Thread
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from starlette.concurrency import run_in_threadpool
 from tortoise.contrib.fastapi import RegisterTortoise
 
-from . import api, leaderboard, vaults, web_rotation
+from . import api, leaderboard, vaults, web_rotation, web_verdicts
 from .models import CHAIN_SLUG, Pool
 from .position import simulate
 from .profiles import PROFILES
 from .scoring import curate
 from .web_auth import authorize, market_user, router
-from .web_db import TORTOISE_ORM
+from .web_db import TORTOISE_ORM, User
 
 
 @asynccontextmanager
@@ -231,9 +232,10 @@ def positions(
     }
 
 
-@app.get("/rotations", dependencies=[Depends(market_user)])
-def rotations(
+@app.get("/rotations")
+async def rotations(
     wallet: Annotated[str, Query(pattern=r"^0x[a-fA-F0-9]{40}$")],
+    user: Annotated[User, Depends(market_user)],
     chain: int = 4663,
     source: Literal["krystal", "rhpools"] = "krystal",
     profile: Literal["conservative", "balanced", "aggressive", "degen"] = "balanced",
@@ -241,23 +243,33 @@ def rotations(
     fresh: Fresh = False,
     response: Response = None,
 ):
-    """Opportunity cost per open position: same dollars in the profile's best pools."""
+    """Opportunity cost per open position: same dollars in the profile's best pools.
+
+    Every verdict shown is logged so the position can later carry its own track record.
+    """
     chain_check(chain, source)
-    positions_entry, meta = store.get(
-        ("positions", chain, wallet.lower()),
-        lambda: vaults.fetch_vaults(wallet, chain_id=chain),
-        fresh=fresh,
-    )
-    pools_entry, pools_meta = store.get(
-        ("pools", chain, source), lambda: api.fetch_pools(chain, source=source), fresh=fresh
-    )
-    if pools_meta.cache == "miss":
-        meta = Meta(meta.cache, meta.age, meta.upstream_ms + pools_meta.upstream_ms)
+
+    def compute():
+        positions_entry, meta = store.get(
+            ("positions", chain, wallet.lower()),
+            lambda: vaults.fetch_vaults(wallet, chain_id=chain),
+            fresh=fresh,
+        )
+        pools_entry, pools_meta = store.get(
+            ("pools", chain, source), lambda: api.fetch_pools(chain, source=source), fresh=fresh
+        )
+        if pools_meta.cache == "miss":
+            meta = Meta(meta.cache, meta.age, meta.upstream_ms + pools_meta.upstream_ms)
+        rows = web_rotation.rotation_rows(
+            positions_entry.value, pools_entry.value, PROFILES[profile], quote=quote or None
+        )
+        return finite(rows), meta, min(positions_entry.at, pools_entry.at)
+
+    rows, meta, fetched_at = await run_in_threadpool(compute)
     meta.apply(response, 60)
-    rows = web_rotation.rotation_rows(
-        positions_entry.value, pools_entry.value, PROFILES[profile], quote=quote or None
-    )
-    return {"rows": finite(rows), "fetchedAt": min(positions_entry.at, pools_entry.at)}
+    await web_verdicts.log_rows(user, rows)
+    await web_verdicts.attach_history(user, rows)
+    return {"rows": rows, "fetchedAt": fetched_at}
 
 
 @app.get("/leaderboard", dependencies=[Depends(market_user)])

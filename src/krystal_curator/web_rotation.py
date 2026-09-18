@@ -56,6 +56,8 @@ def rotation_row(
             "share": rot.current_sim.share if rot.current_sim else None,
             "sigmaKnown": sigma is not None,
             "inScreener": current is not None,
+            "feesTotal": pos.fees_total,
+            "ageDays": pos.age_days,
         },
         "best": (
             {
