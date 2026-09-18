@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { addressActions } from "@/lib/links";
+import { addressActions, withRef } from "@/lib/links";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
@@ -1031,7 +1031,7 @@ function PoolDetail({
             {watched ? "Saved to watchlist" : "Save to watchlist"}
           </button>
           <a
-            href={p.url}
+            href={withRef(p.url)}
             target="_blank"
             rel="noreferrer"
             className="text-link"
@@ -1891,7 +1891,7 @@ function ResearchPanel({
               </h2>
               <a
                 className="text-link"
-                href={v.url}
+                href={withRef(v.url)}
                 target="_blank"
                 rel="noreferrer"
               >

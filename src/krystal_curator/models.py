@@ -21,6 +21,15 @@ CHAIN_SLUG: dict[int, str] = {
 }
 
 ROBINHOOD = 4663
+KRYSTAL_REF = "35STGKW0"  # referral code carried on every defi.krystal.app link we hand out
+
+
+def krystal_url(path: str, **params: object) -> str:
+    """A defi.krystal.app link with our referral code; `path` starts with '/'."""
+    query = urllib.parse.urlencode(
+        {**{k: v for k, v in params.items() if v is not None}, "r": KRYSTAL_REF}
+    )
+    return f"https://defi.krystal.app{path}?{query}"
 
 
 def fnum(x: Any, default: float = 0.0) -> float:
@@ -127,14 +136,12 @@ class Pool:
 
     @property
     def url(self) -> str:
-        q = urllib.parse.urlencode(
-            {
-                "chainId": self.chain_id,
-                "poolAddress": self.address,
-                "protocol": self.protocol,
-            }
+        return krystal_url(
+            "/pools/detail",
+            chainId=self.chain_id,
+            poolAddress=self.address,
+            protocol=self.protocol,
         )
-        return f"https://defi.krystal.app/pools/detail?{q}"
 
     # ---- derived metrics ------------------------------------------------
     @property

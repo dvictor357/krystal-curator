@@ -35,7 +35,7 @@ from urllib.parse import urlparse
 from . import net
 from .analytics import TrackRecord, track_record
 from .api import _HEADERS, KrystalError
-from .models import fnum
+from .models import fnum, krystal_url
 from .vaults import Vault, fetch_vault
 
 
@@ -371,7 +371,7 @@ def fetch_review(
         fetched_at=datetime.now(UTC).isoformat(timespec="seconds"),
         chain_id=chain_id,
         address=address,
-        url=f"https://defi.krystal.app/vaults/{chain_id}/{address}",
+        url=krystal_url(f"/vaults/{chain_id}/{address}"),
     )
     q = {"chainId": chain_id, "vaultAddress": address}
 

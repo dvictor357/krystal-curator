@@ -31,6 +31,19 @@ export type Action = {
   danger?: boolean;
 };
 
+export const KRYSTAL_REF = "35STGKW0";
+/** Any defi.krystal.app link we hand out carries the referral code (idempotent). */
+export function withRef(url: string) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.endsWith("krystal.app") && !u.searchParams.has("r"))
+      u.searchParams.set("r", KRYSTAL_REF);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 export const isAddress = (v: string) => /^0x[0-9a-fA-F]{40}$/.test(v);
 export const shorten = (v: string) =>
   v.length > 14 ? `${v.slice(0, 8)}…${v.slice(-6)}` : v;
@@ -83,7 +96,7 @@ export function addressActions(
       kind: "link",
       label: "Open pool on Krystal",
       hint: "add liquidity · automation",
-      href: extra.krystalUrl,
+      href: withRef(extra.krystalUrl),
     });
   if (kind === "vault" && extra.krystalUrl)
     out.push({
@@ -91,7 +104,7 @@ export function addressActions(
       kind: "link",
       label: "Open vault on Krystal",
       hint: "deposit · strategy · history",
-      href: extra.krystalUrl,
+      href: withRef(extra.krystalUrl),
     });
   if ((kind === "pool" || kind === "token") && dex)
     out.push({
@@ -135,7 +148,7 @@ export function addressActions(
       kind: "link",
       label: "LP positions on Krystal",
       hint: "this wallet's pools and vaults",
-      href: `https://defi.krystal.app/account/${address}/positions`,
+      href: withRef(`https://defi.krystal.app/account/${address}/positions`),
     });
   return out;
 }

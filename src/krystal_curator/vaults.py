@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from . import net
 from .api import _HEADERS, KrystalError
-from .models import fnum
+from .models import fnum, krystal_url
 from .positions import Position
 
 VAULTS = "https://api.krystal.app/all/v1/vaults"
@@ -54,7 +54,7 @@ class Vault:
 
     @property
     def url(self) -> str:
-        return f"https://defi.krystal.app/vaults/{self.chain_id}/{self.address}"
+        return krystal_url(f"/vaults/{self.chain_id}/{self.address}")
 
     @property
     def closed_pnl(self) -> float:

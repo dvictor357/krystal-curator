@@ -35,7 +35,7 @@ from .api import KrystalError
 from .autoconfig import recommend
 from .config import Config
 from .enrich import Flow, FlowCache, TokenInfo, TokenMeta
-from .models import Pool
+from .models import Pool, krystal_url
 from .monitor import Monitor
 from .position import simulate
 from .positions import POSITIONS_UNITS, Position, fetch_positions
@@ -1080,7 +1080,7 @@ class PositionsScreen(Screen[str | None]):
             return
         v = next((v for v in self.curator.vaults if v.name == p.vault), None)
         sc = self.curator.pool_for(p.pool_address, p.pool_alt)
-        webbrowser.open(v.url if v else sc.pool.url if sc else "https://defi.krystal.app/account")
+        webbrowser.open(v.url if v else sc.pool.url if sc else krystal_url("/account"))
 
     def action_jump(self) -> None:
         p = self._selected()
