@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, ArrowLeft, KeyRound, Wallet } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { WalletPicker } from "@/components/wallet-picker";
 import { request } from "@/lib/api";
 import { signInWithWallet } from "@/lib/siwe";
+import { hasSession } from "@/lib/session";
 import type { WalletOption } from "@/lib/wallets";
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -14,6 +15,12 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [picker, setPicker] = useState(false);
+  // Already signed in: skip the form.
+  useEffect(() => {
+    hasSession().then((ok) => {
+      if (ok) window.location.replace("/app");
+    });
+  }, []);
   async function connect(wallet: WalletOption) {
     await signInWithWallet(wallet.provider);
     window.location.assign("/app");

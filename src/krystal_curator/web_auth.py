@@ -20,6 +20,7 @@ from .models import CHAIN_SLUG
 from .web_db import Nonce, Preferences, RateLimit, Session, User, Watch
 
 COOKIE = "curator_session"
+HINT = "curator_signed_in"  # readable by the page so / and /login can skip the sign-in flow
 SESSION_SECONDS = 7 * 24 * 3600
 NONCE_SECONDS = 5 * 60
 passwords = PasswordHash.recommended()
@@ -110,6 +111,15 @@ async def issue_session(response: Response, user: User):
         samesite="lax",
         path="/",
     )
+    response.set_cookie(
+        HINT,
+        "1",
+        max_age=SESSION_SECONDS,
+        httponly=False,
+        secure=os.environ.get("CURATOR_COOKIE_SECURE", "true").lower() != "false",
+        samesite="lax",
+        path="/",
+    )
 
 
 @router.post("/auth/register", status_code=201)
@@ -194,13 +204,9 @@ async def siwe(body: SignedMessage, request: Request, response: Response):
 async def logout(request: Request, response: Response):
     token = request.cookies.get(COOKIE, "")
     await Session.filter(token_hash=hashlib.sha256(token.encode()).hexdigest()).delete()
-    response.delete_cookie(
-        COOKIE,
-        path="/",
-        httponly=True,
-        samesite="lax",
-        secure=os.environ.get("CURATOR_COOKIE_SECURE", "true").lower() != "false",
-    )
+    secure = os.environ.get("CURATOR_COOKIE_SECURE", "true").lower() != "false"
+    response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax", secure=secure)
+    response.delete_cookie(HINT, path="/", samesite="lax", secure=secure)
     return {"ok": True}
 
 

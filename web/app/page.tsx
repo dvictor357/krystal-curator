@@ -1,4 +1,5 @@
 import { AmbientField } from "@/components/ambient";
+import { OpenCurator } from "@/components/open-curator";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -29,9 +30,7 @@ export default function Home() {
             Demo <ArrowUpRight size={14} />
           </Link>
         </nav>
-        <Link href="/login" className="button small">
-          Open Curator
-        </Link>
+        <OpenCurator />
       </header>
       <AmbientField density={52} />
       <main id="main">
@@ -51,9 +50,7 @@ export default function Home() {
               watchlist. You still size the range.
             </p>
             <div className="hero-actions">
-              <Link href="/login" className="button">
-                Start screening
-              </Link>
+              <OpenCurator className="button">Start screening</OpenCurator>
               <Link href="/demo" className="text-link">
                 Open the sample book <ArrowRight size={17} />
               </Link>
@@ -217,9 +214,7 @@ export default function Home() {
               Keep the call.
             </h2>
           </div>
-          <Link href="/login" className="button">
-            Create a workspace
-          </Link>
+          <OpenCurator className="button">Create a workspace</OpenCurator>
         </section>
       </main>
       <footer className="site-footer wrap">

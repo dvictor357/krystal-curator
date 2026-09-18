@@ -23,6 +23,7 @@ import { Brand } from "./brand";
 import { PairMark } from "./pair";
 import { request } from "@/lib/api";
 import { clearResources, useResource } from "@/lib/resource";
+import { clearSignedInHint } from "@/lib/session";
 import { StatusBar } from "@/components/statusbar";
 import { Pager } from "@/components/pager";
 import { AmbientField } from "@/components/ambient";
@@ -248,6 +249,7 @@ export function Workspace({
                 request("/api/auth/logout", { method: "POST" })
                   .then(() => {
                     clearResources();
+                    clearSignedInHint();
                     window.location.assign("/login");
                   })
                   .catch((e) => setNotice(e.message))
@@ -284,6 +286,7 @@ export function Workspace({
               request("/api/auth/logout", { method: "POST" })
                 .then(() => {
                   clearResources();
+                  clearSignedInHint();
                   window.location.assign("/login");
                 })
                 .catch((e) => setNotice(e.message))
