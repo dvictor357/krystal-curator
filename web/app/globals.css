@@ -303,12 +303,81 @@ svg {
   width: 116%;
   margin-left: -8%;
   isolation: isolate;
+  overflow: hidden; /* glow stays inside the plate */
 }
 .hero-art img {
   display: block;
   width: 100%;
   height: auto;
   mix-blend-mode: screen;
+  position: relative;
+  z-index: 1;
+  filter: saturate(1.15) brightness(1.06)
+    drop-shadow(0 0 22px rgba(255, 154, 0, 0.28))
+    drop-shadow(0 0 70px rgba(255, 120, 0, 0.2));
+}
+/* Ambient halo behind the instrument, breathing slowly. */
+.hero-art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 40% 36% at 47% 44%,
+    rgba(255, 154, 0, 0.3),
+    rgba(255, 120, 0, 0.1) 45%,
+    transparent 70%
+  );
+  filter: blur(30px);
+  animation: hero-breathe 5.5s ease-in-out infinite;
+}
+/* Hot core: tight bloom over the sun, flickers a touch. */
+.hero-art::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  width: 17%;
+  aspect-ratio: 1;
+  left: 47%;
+  top: 44%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 214, 120, 0.5),
+    rgba(255, 154, 0, 0.22) 40%,
+    transparent 70%
+  );
+  mix-blend-mode: screen;
+  filter: blur(10px);
+  animation: hero-core 3.2s ease-in-out infinite;
+}
+@keyframes hero-breathe {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+@keyframes hero-core {
+  0%,
+  100% {
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  40% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+  70% {
+    opacity: 0.88;
+    transform: translate(-50%, -50%) scale(1.02);
+  }
 }
 .art-index {
   position: absolute;
