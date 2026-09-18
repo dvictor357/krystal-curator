@@ -80,8 +80,14 @@ async function bridge(
     );
     for (const cookie of response.headers.getSetCookie())
       result.headers.append("Set-Cookie", cookie);
-    if (response.headers.has("retry-after"))
-      result.headers.set("Retry-After", response.headers.get("retry-after")!);
+    for (const name of [
+      "retry-after",
+      "x-cache",
+      "x-upstream-ms",
+      "x-data-age",
+    ])
+      if (response.headers.has(name))
+        result.headers.set(name, response.headers.get(name)!);
     return result;
   } catch {
     return NextResponse.json(

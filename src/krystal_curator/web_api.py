@@ -6,11 +6,11 @@ import math
 import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
-from dataclasses import asdict
-from threading import Lock
+from dataclasses import asdict, dataclass
+from threading import Lock, Thread
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from tortoise.contrib.fastapi import RegisterTortoise
 
 from . import api, leaderboard, vaults
@@ -30,26 +30,96 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Curator analytics", dependencies=[Depends(authorize)], lifespan=lifespan)
 app.include_router(router)
-_cache: OrderedDict = OrderedDict()
-_lock = Lock()
 
 
-def cached(key: tuple, fetch, ttl: int = 90):
-    # ponytail: one process / global fetch lock; shared cache + per-key locks if traffic grows.
-    with _lock:
-        previous = _cache.get(key)
-        if previous and time.time() - previous[0] < ttl:
-            return previous[1], previous[0]
+@dataclass
+class Entry:
+    at: float
+    value: object
+    upstream_ms: float
+    error: str = ""
+
+
+class Cache:
+    """Per-key stale-while-revalidate: fresh → serve; stale → serve and refresh in the
+    background; missing (or `fresh=True`) → fetch under that key's lock. One upstream call
+    per key at a time regardless of how many users ask; `Meta` tells the client which path.
+    """
+
+    def __init__(self, capacity: int = 64):
+        self.entries: OrderedDict[tuple, Entry] = OrderedDict()
+        self.locks: dict[tuple, Lock] = {}
+        self.refreshing: set[tuple] = set()
+        self.guard = Lock()
+        self.capacity = capacity
+
+    def _lock(self, key: tuple) -> Lock:
+        with self.guard:
+            return self.locks.setdefault(key, Lock())
+
+    def _load(self, key: tuple, fetch) -> Entry:
+        started = time.perf_counter()
         try:
-            result = fetch()
-        except api.KrystalError:
-            raise HTTPException(502, "Data provider unavailable. Try again shortly.") from None
-        timestamp = time.time()
-        _cache[key] = (timestamp, result)
-        _cache.move_to_end(key)
-        while len(_cache) > 64:
-            _cache.popitem(last=False)
-        return result, timestamp
+            value = fetch()
+        except api.KrystalError as e:
+            raise HTTPException(502, "Data provider unavailable. Try again shortly.") from e
+        entry = Entry(time.time(), value, (time.perf_counter() - started) * 1000)
+        with self.guard:
+            self.entries[key] = entry
+            self.entries.move_to_end(key)
+            while len(self.entries) > self.capacity:
+                self.entries.popitem(last=False)
+        return entry
+
+    def _refresh(self, key: tuple, fetch):
+        try:
+            with self._lock(key):
+                self._load(key, fetch)
+        except HTTPException:
+            pass  # stale copy stays; the next request tries again
+        finally:
+            with self.guard:
+                self.refreshing.discard(key)
+
+    def get(self, key: tuple, fetch, ttl: int = 90, stale: int = 600, fresh: bool = False):
+        with self.guard:
+            entry = self.entries.get(key)
+        age = time.time() - entry.at if entry else None
+        if entry and not fresh and age < ttl:
+            return entry, Meta("hit", age, 0.0)
+        if entry and not fresh and age < stale:
+            with self.guard:
+                spawn = key not in self.refreshing
+                self.refreshing.add(key)
+            if spawn:
+                Thread(target=self._refresh, args=(key, fetch), daemon=True).start()
+            return entry, Meta("stale", age, 0.0)
+        with self._lock(key):
+            with self.guard:
+                entry = self.entries.get(key)
+            if entry and not fresh and time.time() - entry.at < ttl:
+                return entry, Meta(
+                    "hit", time.time() - entry.at, 0.0
+                )  # another request just loaded it
+            entry = self._load(key, fetch)
+        return entry, Meta("miss", 0.0, entry.upstream_ms)
+
+
+@dataclass
+class Meta:
+    cache: str  # hit | stale | miss
+    age: float
+    upstream_ms: float
+
+    def apply(self, response: Response, ttl: int):
+        response.headers["X-Cache"] = self.cache
+        response.headers["X-Upstream-Ms"] = f"{self.upstream_ms:.0f}"
+        response.headers["X-Data-Age"] = f"{self.age:.0f}"
+        response.headers["Cache-Control"] = f"private, max-age={ttl}"
+
+
+store = Cache()
+Fresh = Annotated[bool, Query(description="Bypass the cache once (manual refresh)")]
 
 
 def chain_check(chain: int, source: str = "krystal"):
@@ -125,33 +195,59 @@ def pools(
     profile: Literal["conservative", "balanced", "aggressive", "degen"] = "balanced",
     quote: Annotated[str, Query(max_length=20, pattern=r"^[A-Za-z0-9]*$")] = "USDG",
     size: Annotated[float, Query(ge=1, le=100_000_000, allow_inf_nan=False)] = 10000,
+    fresh: Fresh = False,
+    response: Response = None,
 ):
     chain_check(chain, source)
-    data, timestamp = cached(
-        ("pools", chain, source), lambda: api.fetch_pools(chain, source=source)
+    entry, meta = store.get(
+        ("pools", chain, source), lambda: api.fetch_pools(chain, source=source), fresh=fresh
     )
+    meta.apply(response, 60)
     return {
-        "rows": pool_rows(data, profile, quote, size),
-        "fetchedAt": timestamp,
+        "rows": pool_rows(entry.value, profile, quote, size),
+        "fetchedAt": entry.at,
         "source": source,
         "demo": False,
     }
 
 
 @app.get("/positions", dependencies=[Depends(market_user)])
-def positions(wallet: Annotated[str, Query(pattern=r"^0x[a-fA-F0-9]{40}$")], chain: int = 4663):
+def positions(
+    wallet: Annotated[str, Query(pattern=r"^0x[a-fA-F0-9]{40}$")],
+    chain: int = 4663,
+    fresh: Fresh = False,
+    response: Response = None,
+):
     chain_check(chain)
-    data, timestamp = cached(
-        ("positions", chain, wallet.lower()), lambda: vaults.fetch_vaults(wallet, chain_id=chain)
+    entry, meta = store.get(
+        ("positions", chain, wallet.lower()),
+        lambda: vaults.fetch_vaults(wallet, chain_id=chain),
+        fresh=fresh,
     )
-    return {"rows": finite([asdict(v) | {"url": v.url} for v in data]), "fetchedAt": timestamp}
+    meta.apply(response, 60)
+    return {
+        "rows": finite([asdict(v) | {"url": v.url} for v in entry.value]),
+        "fetchedAt": entry.at,
+    }
 
 
 @app.get("/leaderboard", dependencies=[Depends(market_user)])
-def board(chain: int = 4663, sort: Literal["roi", "pnl", "apr", "30d"] = "roi"):
+def board(
+    chain: int = 4663,
+    sort: Literal["roi", "pnl", "apr", "30d"] = "roi",
+    fresh: Fresh = False,
+    response: Response = None,
+):
     chain_check(chain)
-    data, timestamp = cached(("leaderboard", chain), lambda: vaults.fetch_public_vaults(chain), 300)
-    ranked = leaderboard.rank(data, sort=sort)
+    entry, meta = store.get(
+        ("leaderboard", chain),
+        lambda: vaults.fetch_public_vaults(chain),
+        ttl=300,
+        stale=1800,
+        fresh=fresh,
+    )
+    meta.apply(response, 300)
+    ranked = leaderboard.rank(entry.value, sort=sort)
     return {
         "rows": finite(
             [asdict(r) | {"url": r.vault.url, "candidate": r.candidate} for r in ranked.vaults]
@@ -169,12 +265,17 @@ def board(chain: int = 4663, sort: Literal["roi", "pnl", "apr", "30d"] = "roi"):
                 for o in ranked.owners
             ]
         ),
-        "fetchedAt": timestamp,
+        "fetchedAt": entry.at,
     }
 
 
 @app.get("/review", dependencies=[Depends(market_user)])
-def review(address: Annotated[str, Query(pattern=r"^0x[a-fA-F0-9]{40}$")], chain: int = 4663):
+def review(
+    address: Annotated[str, Query(pattern=r"^0x[a-fA-F0-9]{40}$")],
+    chain: int = 4663,
+    fresh: Fresh = False,
+    response: Response = None,
+):
     from .vault_eval import evaluate
     from .vault_review import fetch_review
 
@@ -184,5 +285,8 @@ def review(address: Annotated[str, Query(pattern=r"^0x[a-fA-F0-9]{40}$")], chain
         rv = fetch_review(chain, address)
         return finite(asdict(evaluate(rv)))
 
-    data, timestamp = cached(("review", chain, address.lower()), load, 300)
-    return {"evaluation": data, "fetchedAt": timestamp}
+    entry, meta = store.get(
+        ("review", chain, address.lower()), load, ttl=300, stale=1800, fresh=fresh
+    )
+    meta.apply(response, 300)
+    return {"evaluation": entry.value, "fetchedAt": entry.at}

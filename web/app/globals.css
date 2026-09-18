@@ -920,6 +920,7 @@ td small {
 .workspace-main {
   margin-left: 216px;
   min-width: 0;
+  min-height: 100dvh;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -2605,4 +2606,115 @@ dd {
   display: flex;
   gap: 8px;
   margin-bottom: 18px;
+}
+
+/* Connectivity status bar */
+.statusbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  background: #0b0c0a;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+}
+.statusbar-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 28px;
+  padding: 0 24px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.statusbar-summary b {
+  font-weight: 500;
+  color: var(--text);
+}
+.statusbar-summary .warn,
+.statusbar-log .warn {
+  color: var(--amber);
+}
+.statusbar-summary .bad,
+.statusbar-log .bad {
+  color: #e2704a;
+}
+.sb-muted {
+  color: #6f725f;
+}
+.sb-spacer {
+  flex: 1;
+}
+.sb-chevron {
+  transition: transform 0.2s;
+}
+.statusbar.open .sb-chevron {
+  transform: rotate(180deg);
+}
+.sb-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4a4d43;
+  flex-shrink: 0;
+}
+.sb-dot.good {
+  background: var(--green);
+  box-shadow: 0 0 6px #a9ce9680;
+}
+.sb-dot.warn {
+  background: var(--amber);
+  box-shadow: 0 0 6px #ff9a0080;
+  animation: sb-pulse 1.4s ease-in-out infinite;
+}
+.sb-dot.bad {
+  background: #e2704a;
+  box-shadow: 0 0 6px #e2704a80;
+  animation: sb-pulse 0.9s ease-in-out infinite;
+}
+@keyframes sb-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.statusbar-log {
+  list-style: none;
+  margin: 0;
+  padding: 6px 24px 10px;
+  border-top: 1px solid var(--line);
+  max-height: 200px;
+  overflow: auto;
+}
+.statusbar-log li {
+  display: grid;
+  grid-template-columns: 6px 70px 110px 60px 60px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 4px 0;
+}
+.sb-path {
+  color: var(--text);
+}
+@media (max-width: 720px) {
+  .statusbar-summary {
+    gap: 12px;
+    padding: 0 14px;
+  }
+  .statusbar-summary .sb-muted {
+    display: none;
+  }
+  .statusbar-log li {
+    grid-template-columns: 6px 60px 1fr 50px;
+  }
+  .statusbar-log li > :nth-child(4),
+  .statusbar-log li > :nth-child(6) {
+    display: none;
+  }
 }

@@ -22,6 +22,8 @@ import {
 import { Brand } from "./brand";
 import { PairMark } from "./pair";
 import { request } from "@/lib/api";
+import { clearResources, useResource } from "@/lib/resource";
+import { StatusBar } from "@/components/statusbar";
 import { shortAddress } from "@/lib/siwe";
 import { protocolLabel } from "@/lib/pair";
 import { chains, profiles } from "@/lib/validation";
@@ -46,19 +48,15 @@ export function Workspace({
   const [email, setEmail] = useState("");
   const [settings, setSettings] = useState<Settings>(defaults);
   const [watched, setWatched] = useState<string[]>([]);
-  const [rows, setRows] = useState<Pool[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [protocol, setProtocol] = useState("all");
   const [quote, setQuote] = useState("USDG");
   const [sort, setSort] = useState("score");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [accountError, setAccountError] = useState("");
   const [notice, setNotice] = useState("");
-  const [timestamp, setTimestamp] = useState<number | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [mutating, setMutating] = useState(false);
-  const sequence = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setActive(page);
@@ -93,62 +91,40 @@ export function Workspace({
         }
       })
       .catch((e) => {
-        if (!cancelled) setError(e.message);
+        if (!cancelled) setAccountError(e.message);
       });
     return () => {
       cancelled = true;
     };
   }, [demo]);
+  const poolsPath =
+    !demo && ready && ["screener", "watchlist"].includes(active)
+      ? `/api/market/pools?${new URLSearchParams({
+          chain: String(settings.chain),
+          source: settings.source,
+          profile: settings.profile,
+          size: String(settings.size),
+          quote,
+        })}`
+      : null;
+  const pools = useResource<{ rows: Pool[]; fetchedAt: number }>(poolsPath, {
+    ttl: 60,
+    interval: 60,
+  });
+  const rows: Pool[] = demo
+    ? (snapshot[settings.profile as keyof typeof snapshot] as Pool[])
+    : (pools.data?.rows ?? []);
+  const busy = pools.busy;
+  const error = accountError || pools.error;
+  const timestamp = pools.fetchedAt;
   useEffect(() => {
-    if (!ready || !["screener", "watchlist"].includes(active)) return;
-    const id = ++sequence.current;
-    setBusy(true);
-    setError("");
-    setRows([]);
     setSelected(null);
-    setTimestamp(null);
-    if (demo) {
-      const data = snapshot[
-        settings.profile as keyof typeof snapshot
-      ] as Pool[];
-      setRows(data);
-      setBusy(false);
-      return;
-    }
-    const params = new URLSearchParams({
-      chain: String(settings.chain),
-      source: settings.source,
-      profile: settings.profile,
-      size: String(settings.size),
-      quote,
-    });
-    request(`/api/market/pools?${params}`)
-      .then((data) => {
-        if (id === sequence.current) {
-          setRows(data.rows);
-          setTimestamp(data.fetchedAt);
-        }
-      })
-      .catch((e) => {
-        if (id === sequence.current) setError(e.message);
-      })
-      .finally(() => {
-        if (id === sequence.current) setBusy(false);
-      });
-    return () => {
-      sequence.current++;
-    };
-  }, [
-    ready,
-    active,
-    settings.chain,
-    settings.source,
-    settings.profile,
-    settings.size,
-    quote,
-    refresh,
-    demo,
-  ]);
+  }, [poolsPath]);
+  useEffect(() => {
+    if (refresh && poolsPath) pools.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh]);
+
   async function toggleWatch(pool: Pool) {
     if (mutating) return;
     setMutating(true);
@@ -262,7 +238,10 @@ export function Workspace({
               className="account-card"
               onClick={() =>
                 request("/api/auth/logout", { method: "POST" })
-                  .then(() => window.location.assign("/login"))
+                  .then(() => {
+                    clearResources();
+                    window.location.assign("/login");
+                  })
                   .catch((e) => setNotice(e.message))
               }
             >
@@ -295,7 +274,10 @@ export function Workspace({
             className="mobile-signout text-link"
             onClick={() =>
               request("/api/auth/logout", { method: "POST" })
-                .then(() => window.location.assign("/login"))
+                .then(() => {
+                  clearResources();
+                  window.location.assign("/login");
+                })
                 .catch((e) => setNotice(e.message))
             }
           >
@@ -340,7 +322,10 @@ export function Workspace({
                   setNotice(demo ? "Sample snapshot reloaded." : "");
                 }}
               >
-                <RefreshCw size={15} className={busy ? "spinning" : ""} />
+                <RefreshCw
+                  size={15}
+                  className={busy || pools.revalidating ? "spinning" : ""}
+                />
                 Refresh
               </button>
             )}
@@ -685,7 +670,7 @@ export function Workspace({
                         {demo
                           ? "Fixture snapshot · not live"
                           : timestamp
-                            ? `Fetched ${new Date(timestamp * 1000).toLocaleTimeString()} · cached up to 90s`
+                            ? `Fetched ${new Date(timestamp * 1000).toLocaleTimeString()} · refreshes every 60s`
                             : "Awaiting source"}{" "}
                         · {settings.source}
                       </span>
@@ -735,6 +720,7 @@ export function Workspace({
             {notice}
           </div>
         </main>
+        <StatusBar demo={demo} />
         <footer className="app-footer">
           <span>
             Curator <span className="muted">/ independent LP research</span>
@@ -1161,6 +1147,14 @@ type Vault = {
   url: string;
   chain_id: number;
 };
+type Owner = {
+  address: string;
+  name: string;
+  tvl: number;
+  pnl: number;
+  roi: number;
+  vaults: number;
+};
 type RankedVault = {
   vault: Vault;
   roi_pct: number;
@@ -1190,63 +1184,53 @@ function ResearchPanel({
   demo: boolean;
   refresh: number;
 }) {
-  const [vaults, setVaults] = useState<Vault[]>([]);
-  const [ranked, setRanked] = useState<RankedVault[]>([]);
-  const [owners, setOwners] = useState<
-    {
-      address: string;
-      name: string;
-      tvl: number;
-      pnl: number;
-      roi: number;
-      vaults: number;
-    }[]
-  >([]);
   const [boardView, setBoardView] = useState("vaults");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [time, setTime] = useState<number | null>(null);
   const [review, setReview] = useState<Evaluation | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState("");
   const generation = useRef(0);
+  const path =
+    demo || (kind === "positions" && !settings.wallet)
+      ? null
+      : `/api/market/${kind}?${new URLSearchParams({
+          chain: String(settings.chain),
+          ...(kind === "positions" ? { wallet: settings.wallet } : {}),
+        })}`;
+  const resource = useResource<{
+    rows: Vault[] | RankedVault[];
+    owners?: Owner[];
+    fetchedAt: number;
+  }>(
+    path,
+    kind === "positions"
+      ? { ttl: 60, interval: 60 }
+      : { ttl: 300, interval: 300 },
+  );
+  const vaults = (
+    kind === "positions" ? (resource.data?.rows ?? []) : []
+  ) as Vault[];
+  const ranked = (
+    kind === "leaderboard" ? (resource.data?.rows ?? []) : []
+  ) as RankedVault[];
+  const owners: Owner[] = resource.data?.owners ?? [];
+  const busy = resource.busy;
+  const error = resource.error || reviewError;
+  const time = resource.fetchedAt;
   useEffect(() => {
-    const id = ++generation.current;
-    setError("");
-    setVaults([]);
-    setRanked([]);
-    setOwners([]);
+    generation.current++;
     setReview(null);
     setReviewBusy(false);
-    setTime(null);
-    if (demo || (kind === "positions" && !settings.wallet)) return;
-    setBusy(true);
-    const params = new URLSearchParams({ chain: String(settings.chain) });
-    if (kind === "positions") params.set("wallet", settings.wallet);
-    request(`/api/market/${kind}?${params}`)
-      .then((data) => {
-        if (id !== generation.current) return;
-        if (kind === "positions") setVaults(data.rows);
-        else {
-          setRanked(data.rows);
-          setOwners(data.owners || []);
-        }
-        setTime(data.fetchedAt);
-      })
-      .catch((e) => {
-        if (id === generation.current) setError(e.message);
-      })
-      .finally(() => {
-        if (id === generation.current) setBusy(false);
-      });
-    return () => {
-      generation.current++;
-    };
-  }, [kind, settings.chain, settings.wallet, demo, refresh]);
+    setReviewError("");
+  }, [path]);
+  useEffect(() => {
+    if (refresh && path) resource.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh]);
   async function inspect(v: Vault) {
     const id = generation.current;
     setReviewBusy(true);
     setReview(null);
-    setError("");
+    setReviewError("");
     try {
       const data = await request(
         `/api/market/review?chain=${v.chain_id}&address=${encodeURIComponent(v.address)}`,
@@ -1254,7 +1238,7 @@ function ResearchPanel({
       if (id === generation.current) setReview(data.evaluation);
     } catch (e) {
       if (id === generation.current)
-        setError(e instanceof Error ? e.message : "Review unavailable.");
+        setReviewError(e instanceof Error ? e.message : "Review unavailable.");
     } finally {
       if (id === generation.current) setReviewBusy(false);
     }

@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import os
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -175,3 +176,83 @@ async def test_postgres_accounts_isolated_and_sessions_revoked(monkeypatch):
         keys += ["auth-email:" + hashlib.sha256(email.encode()).hexdigest() for email in emails]
         await RateLimit.filter(key__in=keys).delete()
         await Tortoise.close_connections()
+
+
+def test_cache_serves_stale_and_refreshes_in_background(monkeypatch):
+    import threading
+
+    from krystal_curator import web_api
+
+    cache = web_api.Cache()
+    calls = []
+    done = threading.Event()
+
+    def fetch():
+        calls.append(1)
+        if len(calls) == 2:
+            done.set()
+        return len(calls)
+
+    entry, meta = cache.get(("k",), fetch, ttl=10, stale=100)
+    assert (entry.value, meta.cache) == (1, "miss")
+    assert meta.upstream_ms >= 0
+    entry, meta = cache.get(("k",), fetch, ttl=10, stale=100)
+    assert (entry.value, meta.cache) == (1, "hit")
+    # Past ttl but inside the stale window: old value now, refresh in the background.
+    cache.entries[("k",)].at -= 11
+    entry, meta = cache.get(("k",), fetch, ttl=10, stale=100)
+    assert (entry.value, meta.cache) == (1, "stale")
+    assert done.wait(2)
+    for _ in range(50):
+        if ("k",) not in cache.refreshing:
+            break
+        time.sleep(0.01)
+    entry, meta = cache.get(("k",), fetch, ttl=10, stale=100)
+    assert (entry.value, meta.cache) == (2, "hit")
+    # Manual refresh bypasses a fresh entry; upstream failure keeps the stale copy.
+    entry, meta = cache.get(("k",), fetch, ttl=10, stale=100, fresh=True)
+    assert (entry.value, meta.cache) == (3, "miss")
+
+    def broken():
+        raise web_api.api.KrystalError("down")
+
+    cache.entries[("k",)].at -= 11
+    entry, meta = cache.get(("k",), broken, ttl=10, stale=100)
+    assert (entry.value, meta.cache) == (3, "stale")
+    for _ in range(50):
+        if ("k",) not in cache.refreshing:
+            break
+        time.sleep(0.01)
+    assert cache.entries[("k",)].value == 3
+    cache.entries[("k",)].at -= 1000
+    with pytest.raises(web_api.HTTPException):
+        cache.get(("k",), broken, ttl=10, stale=100)
+
+
+def test_cache_one_upstream_call_per_key_under_concurrency():
+    import threading
+
+    from krystal_curator import web_api
+
+    cache = web_api.Cache()
+    calls = []
+    gate = threading.Event()
+
+    def slow():
+        calls.append(1)
+        gate.wait(2)
+        return "v"
+
+    results = []
+    workers = [
+        threading.Thread(target=lambda: results.append(cache.get(("k",), slow)[1].cache))
+        for _ in range(5)
+    ]
+    for w in workers:
+        w.start()
+    time.sleep(0.1)
+    gate.set()
+    for w in workers:
+        w.join(3)
+    assert len(calls) == 1
+    assert sorted(results) == ["hit"] * 4 + ["miss"]
