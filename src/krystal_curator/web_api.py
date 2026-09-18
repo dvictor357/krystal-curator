@@ -81,6 +81,8 @@ def pool_rows(pools: list[Pool], profile: str, quote: str, size: float):
                 "token0": p.token0,
                 "token1": p.token1,
                 "feeTier": p.fee_tier_pct,
+                "token0Address": p.token0_addr,
+                "token1Address": p.token1_addr,
                 "token0Logo": p.token0_logo if p.token0_logo.startswith("https://") else "",
                 "token1Logo": p.token1_logo if p.token1_logo.startswith("https://") else "",
                 "address": p.address,

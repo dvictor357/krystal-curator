@@ -13,6 +13,8 @@ export type Pool = {
   token0?: string;
   token1?: string;
   feeTier?: number;
+  token0Address?: string;
+  token1Address?: string;
   token0Logo?: string;
   token1Logo?: string;
   address: string;

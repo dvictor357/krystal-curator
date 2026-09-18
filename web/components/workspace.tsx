@@ -27,6 +27,8 @@ import { clearSignedInHint } from "@/lib/session";
 import { StatusBar } from "@/components/statusbar";
 import { Pager } from "@/components/pager";
 import { AmbientField } from "@/components/ambient";
+import { PaletteProvider } from "@/components/palette";
+import { AddressChip, TokenLink } from "@/components/address";
 import { usePagination } from "@/lib/paging";
 import { shortAddress } from "@/lib/siwe";
 import { protocolLabel } from "@/lib/pair";
@@ -50,6 +52,7 @@ export function Workspace({
   const [active, setActive] = useState(page);
   const [ready, setReady] = useState(demo);
   const [email, setEmail] = useState("");
+  const [address, setAddress] = useState("");
   const [settings, setSettings] = useState<Settings>(defaults);
   const [watched, setWatched] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -89,6 +92,7 @@ export function Workspace({
       .then((account) => {
         if (!cancelled) {
           setEmail(account.email ?? shortAddress(account.address));
+          setAddress(account.address ?? "");
           setSettings(account.settings || defaults);
           setWatched(account.watchlist);
           setReady(true);
@@ -185,66 +189,113 @@ export function Workspace({
     setNotice("");
   }
   return (
-    <div className="workspace">
-      <AmbientField />
-      <aside className="sidebar">
-        <Brand />
-        <div className="workspace-label">
-          Workspace <span>live</span>
-        </div>
-        <nav aria-label="Workspace navigation">
-          {tabs.map((t) =>
-            demo ? (
-              <button
-                key={t.id}
-                className={active === t.id ? "nav-item active" : "nav-item"}
-                onClick={() => navigate(t.id)}
-              >
-                <t.icon size={17} />
-                {t.label}
-                {t.id === "watchlist" && (
-                  <span className="count">{watched.length}</span>
-                )}
-              </button>
-            ) : (
-              <Link
-                key={t.id}
-                href={t.id === "screener" ? "/app" : `/app/${t.id}`}
-                className={active === t.id ? "nav-item active" : "nav-item"}
-              >
-                <t.icon size={17} />
-                {t.label}
-                {t.id === "watchlist" && (
-                  <span className="count">{watched.length}</span>
-                )}
-              </Link>
-            ),
-          )}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <Crosshair size={20} />
-            <p>
-              Rank the pair.
-              <br />
-              <span>You size the range.</span>
-            </p>
+    <PaletteProvider>
+      <div className="workspace">
+        <AmbientField />
+        <aside className="sidebar">
+          <Brand />
+          <div className="workspace-label">
+            Workspace <span>live</span>
           </div>
-          <Link href="/#method" className="nav-item">
-            <CircleHelp size={17} /> How it works <ArrowUpRight size={13} />
-          </Link>
-          {demo ? (
-            <Link className="account-card" href="/login">
-              <span className="avatar">C</span>
-              <span>
-                Create a workspace
-                <small>Sign in to keep a watchlist</small>
-              </span>
-              <ChevronRight size={16} />
+          <nav aria-label="Workspace navigation">
+            {tabs.map((t) =>
+              demo ? (
+                <button
+                  key={t.id}
+                  className={active === t.id ? "nav-item active" : "nav-item"}
+                  onClick={() => navigate(t.id)}
+                >
+                  <t.icon size={17} />
+                  {t.label}
+                  {t.id === "watchlist" && (
+                    <span className="count">{watched.length}</span>
+                  )}
+                </button>
+              ) : (
+                <Link
+                  key={t.id}
+                  href={t.id === "screener" ? "/app" : `/app/${t.id}`}
+                  className={active === t.id ? "nav-item active" : "nav-item"}
+                >
+                  <t.icon size={17} />
+                  {t.label}
+                  {t.id === "watchlist" && (
+                    <span className="count">{watched.length}</span>
+                  )}
+                </Link>
+              ),
+            )}
+          </nav>
+          <div className="sidebar-bottom">
+            <div className="sidebar-note">
+              <Crosshair size={20} />
+              <p>
+                Rank the pair.
+                <br />
+                <span>You size the range.</span>
+              </p>
+            </div>
+            <Link href="/#method" className="nav-item">
+              <CircleHelp size={17} /> How it works <ArrowUpRight size={13} />
             </Link>
-          ) : (
+            {demo ? (
+              <Link className="account-card" href="/login">
+                <span className="avatar">C</span>
+                <span>
+                  Create a workspace
+                  <small>Sign in to keep a watchlist</small>
+                </span>
+                <ChevronRight size={16} />
+              </Link>
+            ) : (
+              <button
+                className="account-card"
+                onClick={() =>
+                  request("/api/auth/logout", { method: "POST" })
+                    .then(() => {
+                      clearResources();
+                      clearSignedInHint();
+                      window.location.assign("/login");
+                    })
+                    .catch((e) => setNotice(e.message))
+                }
+              >
+                <span className="avatar">
+                  {email.startsWith("0x")
+                    ? "0x"
+                    : email.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="account-email">
+                  {email}
+                  <small>Sign out</small>
+                </span>
+                {address && (
+                  <AddressChip
+                    address={address}
+                    chain={settings.chain}
+                    kind="wallet"
+                    label="Your wallet"
+                    className="account-chip"
+                  />
+                )}
+                <LogOut size={15} />
+              </button>
+            )}
+          </div>
+        </aside>
+        <div className="workspace-main">
+          <header className="app-topbar">
+            <span>
+              Workspace <ChevronRight size={12} /> <b>{title}</b>
+            </span>
+            <span className="connection">
+              <span className="status-dot" />
+              {demo ? "Demo · sample snapshot" : "Read-only analytics"}
+            </span>
+          </header>
+          {!demo && ready && (
             <button
-              className="account-card"
+              className="mobile-signout text-link"
               onClick={() =>
                 request("/api/auth/logout", { method: "POST" })
                   .then(() => {
@@ -255,492 +306,461 @@ export function Workspace({
                   .catch((e) => setNotice(e.message))
               }
             >
-              <span className="avatar">
-                {email.startsWith("0x")
-                  ? "0x"
-                  : email.slice(0, 1).toUpperCase()}
-              </span>
-              <span className="account-email">
-                {email}
-                <small>Sign out</small>
-              </span>
-              <LogOut size={15} />
+              <LogOut size={14} /> Sign out
             </button>
           )}
-        </div>
-      </aside>
-      <div className="workspace-main">
-        <header className="app-topbar">
-          <span>
-            Workspace <ChevronRight size={12} /> <b>{title}</b>
-          </span>
-          <span className="connection">
-            <span className="status-dot" />
-            {demo ? "Demo · sample snapshot" : "Read-only analytics"}
-          </span>
-        </header>
-        {!demo && ready && (
-          <button
-            className="mobile-signout text-link"
-            onClick={() =>
-              request("/api/auth/logout", { method: "POST" })
-                .then(() => {
-                  clearResources();
-                  clearSignedInHint();
-                  window.location.assign("/login");
-                })
-                .catch((e) => setNotice(e.message))
-            }
-          >
-            <LogOut size={14} /> Sign out
-          </button>
-        )}
-        <main id="main" className="app-content page-enter" key={active}>
-          {demo && (
-            <div className="demo-banner">
-              <span>
-                <strong>Sample book.</strong> Fixture data, not a live market.
-                Watchlist changes last for this visit.
-              </span>
-              <Link href="/login">
-                Create an account <ArrowUpRight size={14} />
-              </Link>
-            </div>
-          )}
-          <div className="app-heading">
-            <div className="eyebrow">
-              {active === "screener"
-                ? "Screen · inspect · shortlist"
-                : "Your liquidity workspace"}
-              <h1>
-                {title}
-                <span className="amber">.</span>
-              </h1>
-              <p>
-                {active === "screener"
-                  ? "Ranked pairs matching this profile and quote."
-                  : active === "watchlist"
-                    ? "Pairs you marked for a second look."
-                    : "Context for the next size decision."}
-              </p>
-            </div>
-            {active !== "settings" && (
-              <button
-                className="button secondary small"
-                disabled={busy || !ready}
-                onClick={() => {
-                  setRefresh((n) => n + 1);
-                  setNotice(demo ? "Sample snapshot reloaded." : "");
-                }}
-              >
-                <RefreshCw
-                  size={15}
-                  className={busy || pools.revalidating ? "spinning" : ""}
-                />
-                Refresh
-              </button>
+          <main id="main" className="app-content page-enter" key={active}>
+            {demo && (
+              <div className="demo-banner">
+                <span>
+                  <strong>Sample book.</strong> Fixture data, not a live market.
+                  Watchlist changes last for this visit.
+                </span>
+                <Link href="/login">
+                  Create an account <ArrowUpRight size={14} />
+                </Link>
+              </div>
             )}
-          </div>
-          {!ready ? (
-            <div className="empty" role="status">
-              {error || "Opening your workspace…"}
-              {error && (
+            <div className="app-heading">
+              <div className="eyebrow">
+                {active === "screener"
+                  ? "Screen · inspect · shortlist"
+                  : "Your liquidity workspace"}
+                <h1>
+                  {title}
+                  <span className="amber">.</span>
+                </h1>
+                <p>
+                  {active === "screener"
+                    ? "Ranked pairs matching this profile and quote."
+                    : active === "watchlist"
+                      ? "Pairs you marked for a second look."
+                      : "Context for the next size decision."}
+                </p>
+              </div>
+              {active !== "settings" && (
                 <button
-                  className="button secondary"
-                  onClick={() => window.location.reload()}
+                  className="button secondary small"
+                  disabled={busy || !ready}
+                  onClick={() => {
+                    setRefresh((n) => n + 1);
+                    setNotice(demo ? "Sample snapshot reloaded." : "");
+                  }}
                 >
-                  Try again
+                  <RefreshCw
+                    size={15}
+                    className={busy || pools.revalidating ? "spinning" : ""}
+                  />
+                  Refresh
                 </button>
               )}
             </div>
-          ) : (
-            <>
-              {["screener", "watchlist"].includes(active) && (
-                <>
-                  <div className="metric-grid">
-                    <Metric
-                      label="Pairs in view"
-                      value={String(visible.length).padStart(2, "0")}
-                      note={
-                        active === "watchlist"
-                          ? "Saved pools matching filters"
-                          : "Matching this risk profile"
-                      }
-                    />
-                    <Metric
-                      label="Total value locked"
-                      value={money(total, true)}
-                      note="Across the current selection"
-                    />
-                    <Metric
-                      label="24h trading fees"
-                      value={money(
-                        visible.reduce((n, p) => n + p.fees, 0),
-                        true,
-                      )}
-                      note="Reported by the selected source"
-                    />
-                    <Metric
-                      label="Risk profile"
-                      value={settings.profile}
-                      note="Filters and weighted scoring"
-                      accent
-                    />
-                  </div>
-                  <div className="filters">
-                    <label>
-                      <span>Network</span>
-                      <select
-                        aria-label="Network"
-                        disabled={demo}
-                        value={settings.chain}
-                        onChange={(e) =>
-                          setSettings({
-                            ...settings,
-                            chain: Number(e.target.value),
-                            source: "krystal",
-                          })
-                        }
-                      >
-                        {Object.entries(chains).map(([k, v]) => (
-                          <option key={k} value={k}>
-                            {v}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>Source</span>
-                      <select
-                        aria-label="Source"
-                        disabled={demo}
-                        value={settings.source}
-                        onChange={(e) =>
-                          setSettings({ ...settings, source: e.target.value })
-                        }
-                      >
-                        <option value="krystal">Krystal</option>
-                        {settings.chain === 4663 && (
-                          <option value="rhpools">rhpools</option>
-                        )}
-                      </select>
-                    </label>
-                    <label>
-                      <span>Risk profile</span>
-                      <select
-                        aria-label="Risk profile"
-                        value={settings.profile}
-                        onChange={(e) =>
-                          setSettings({ ...settings, profile: e.target.value })
-                        }
-                      >
-                        {profiles.map((p) => (
-                          <option key={p}>{p}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>Protocol</span>
-                      <select
-                        aria-label="Protocol"
-                        value={protocol}
-                        onChange={(e) => setProtocol(e.target.value)}
-                      >
-                        <option value="all">All protocols</option>
-                        {Array.from(new Set(rows.map((p) => p.protocol))).map(
-                          (p) => (
-                            <option key={p} value={p}>
-                              {protocolLabel(p)}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                    </label>
-                  </div>
-                  <div
-                    className="quote-chips"
-                    role="group"
-                    aria-label="Quote token"
+            {!ready ? (
+              <div className="empty" role="status">
+                {error || "Opening your workspace…"}
+                {error && (
+                  <button
+                    className="button secondary"
+                    onClick={() => window.location.reload()}
                   >
-                    <span>Quoted in</span>
-                    {[
-                      ["USDG", "USDG"],
-                      ["USDC", "USDC"],
-                      ["USDT", "USDT"],
-                      ["WETH", "WETH"],
-                      ["", "Any"],
-                    ].map(([value, label]) => (
-                      <button
-                        key={label}
-                        type="button"
-                        className={quote === value ? "chip active" : "chip"}
-                        disabled={demo && value !== "USDG"}
-                        aria-pressed={quote === value}
-                        onClick={() => setQuote(value)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="data-panel">
-                    <div className="data-toolbar">
-                      <div className="panel-title">
-                        <span className="status-dot" />
-                        {active === "watchlist" ? "Saved pairs" : "Pool book"}
-                        <span className="count">{visible.length}</span>
-                      </div>
-                      <label className="search">
-                        <Search size={15} />
-                        <input
-                          ref={searchRef}
-                          aria-label="Search pools"
-                          placeholder="WETH, USDG, or address"
-                          value={query}
-                          onChange={(e) => setQuery(e.target.value)}
-                        />
-                        <kbd>/</kbd>
-                      </label>
-                      <label className="sort-label">
-                        <ArrowDownUp size={14} />
+                    Try again
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                {["screener", "watchlist"].includes(active) && (
+                  <>
+                    <div className="metric-grid">
+                      <Metric
+                        label="Pairs in view"
+                        value={String(visible.length).padStart(2, "0")}
+                        note={
+                          active === "watchlist"
+                            ? "Saved pools matching filters"
+                            : "Matching this risk profile"
+                        }
+                      />
+                      <Metric
+                        label="Total value locked"
+                        value={money(total, true)}
+                        note="Across the current selection"
+                      />
+                      <Metric
+                        label="24h trading fees"
+                        value={money(
+                          visible.reduce((n, p) => n + p.fees, 0),
+                          true,
+                        )}
+                        note="Reported by the selected source"
+                      />
+                      <Metric
+                        label="Risk profile"
+                        value={settings.profile}
+                        note="Filters and weighted scoring"
+                        accent
+                      />
+                    </div>
+                    <div className="filters">
+                      <label>
+                        <span>Network</span>
                         <select
-                          aria-label="Sort pools"
-                          value={sort}
-                          onChange={(e) => setSort(e.target.value)}
+                          aria-label="Network"
+                          disabled={demo}
+                          value={settings.chain}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              chain: Number(e.target.value),
+                              source: "krystal",
+                            })
+                          }
                         >
-                          <option value="score">Score</option>
-                          <option value="tvl">TVL</option>
-                          <option value="volume">Volume</option>
-                          <option value="fees">Fees</option>
-                          <option value="feeYield">Fee yield</option>
+                          {Object.entries(chains).map(([k, v]) => (
+                            <option key={k} value={k}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Source</span>
+                        <select
+                          aria-label="Source"
+                          disabled={demo}
+                          value={settings.source}
+                          onChange={(e) =>
+                            setSettings({ ...settings, source: e.target.value })
+                          }
+                        >
+                          <option value="krystal">Krystal</option>
+                          {settings.chain === 4663 && (
+                            <option value="rhpools">rhpools</option>
+                          )}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Risk profile</span>
+                        <select
+                          aria-label="Risk profile"
+                          value={settings.profile}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              profile: e.target.value,
+                            })
+                          }
+                        >
+                          {profiles.map((p) => (
+                            <option key={p}>{p}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Protocol</span>
+                        <select
+                          aria-label="Protocol"
+                          value={protocol}
+                          onChange={(e) => setProtocol(e.target.value)}
+                        >
+                          <option value="all">All protocols</option>
+                          {Array.from(new Set(rows.map((p) => p.protocol))).map(
+                            (p) => (
+                              <option key={p} value={p}>
+                                {protocolLabel(p)}
+                              </option>
+                            ),
+                          )}
                         </select>
                       </label>
                     </div>
-                    {busy ? (
-                      <div className="empty" role="status">
-                        <RefreshCw className="spinning" />
-                        Reading the market…
-                      </div>
-                    ) : error ? (
-                      <div className="empty error" role="alert">
-                        {error}
+                    <div
+                      className="quote-chips"
+                      role="group"
+                      aria-label="Quote token"
+                    >
+                      <span>Quoted in</span>
+                      {[
+                        ["USDG", "USDG"],
+                        ["USDC", "USDC"],
+                        ["USDT", "USDT"],
+                        ["WETH", "WETH"],
+                        ["", "Any"],
+                      ].map(([value, label]) => (
                         <button
-                          className="button secondary"
-                          onClick={() => setRefresh((n) => n + 1)}
+                          key={label}
+                          type="button"
+                          className={quote === value ? "chip active" : "chip"}
+                          disabled={demo && value !== "USDG"}
+                          aria-pressed={quote === value}
+                          onClick={() => setQuote(value)}
                         >
-                          Try again
+                          {label}
                         </button>
+                      ))}
+                    </div>
+                    <div className="data-panel">
+                      <div className="data-toolbar">
+                        <div className="panel-title">
+                          <span className="status-dot" />
+                          {active === "watchlist" ? "Saved pairs" : "Pool book"}
+                          <span className="count">{visible.length}</span>
+                        </div>
+                        <label className="search">
+                          <Search size={15} />
+                          <input
+                            ref={searchRef}
+                            aria-label="Search pools"
+                            placeholder="WETH, USDG, or address"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                          />
+                          <kbd>/</kbd>
+                        </label>
+                        <label className="sort-label">
+                          <ArrowDownUp size={14} />
+                          <select
+                            aria-label="Sort pools"
+                            value={sort}
+                            onChange={(e) => setSort(e.target.value)}
+                          >
+                            <option value="score">Score</option>
+                            <option value="tvl">TVL</option>
+                            <option value="volume">Volume</option>
+                            <option value="fees">Fees</option>
+                            <option value="feeYield">Fee yield</option>
+                          </select>
+                        </label>
                       </div>
-                    ) : !visible.length ? (
-                      <div className="empty">
-                        <Search size={28} />
-                        <h3>
-                          {active === "watchlist"
-                            ? "No saved pairs match this view."
-                            : "No pairs match these filters."}
-                        </h3>
-                        <p>
-                          {active === "watchlist"
-                            ? "Save a pair from the screener, or loosen profile and network."
-                            : "Try another quote, protocol, or search."}
-                        </p>
-                        <button
-                          className="button secondary"
-                          onClick={() => {
-                            setQuery("");
-                            setProtocol("all");
-                            setSettings({ ...settings, profile: "degen" });
-                          }}
+                      {busy ? (
+                        <div className="empty" role="status">
+                          <RefreshCw className="spinning" />
+                          Reading the market…
+                        </div>
+                      ) : error ? (
+                        <div className="empty error" role="alert">
+                          {error}
+                          <button
+                            className="button secondary"
+                            onClick={() => setRefresh((n) => n + 1)}
+                          >
+                            Try again
+                          </button>
+                        </div>
+                      ) : !visible.length ? (
+                        <div className="empty">
+                          <Search size={28} />
+                          <h3>
+                            {active === "watchlist"
+                              ? "No saved pairs match this view."
+                              : "No pairs match these filters."}
+                          </h3>
+                          <p>
+                            {active === "watchlist"
+                              ? "Save a pair from the screener, or loosen profile and network."
+                              : "Try another quote, protocol, or search."}
+                          </p>
+                          <button
+                            className="button secondary"
+                            onClick={() => {
+                              setQuery("");
+                              setProtocol("all");
+                              setSettings({ ...settings, profile: "degen" });
+                            }}
+                          >
+                            Broaden filters
+                          </button>
+                        </div>
+                      ) : (
+                        <div
+                          className="table-scroll standard"
+                          role="region"
+                          aria-label="Ranked liquidity pools"
+                          tabIndex={0}
                         >
-                          Broaden filters
-                        </button>
-                      </div>
-                    ) : (
-                      <div
-                        className="table-scroll standard"
-                        role="region"
-                        aria-label="Ranked liquidity pools"
-                        tabIndex={0}
-                      >
-                        <table className="pool-table">
-                          <thead>
-                            <tr>
-                              <th aria-label="Watchlist" />
-                              <th>Pair</th>
-                              <SortHeader
-                                id="tvl"
-                                label="TVL"
-                                sort={sort}
-                                onSort={setSort}
-                              />
-                              <SortHeader
-                                id="volume"
-                                label="24h volume"
-                                sort={sort}
-                                onSort={setSort}
-                                className="col-volume"
-                              />
-                              <SortHeader
-                                id="fees"
-                                label="24h fees"
-                                sort={sort}
-                                onSort={setSort}
-                              />
-                              <SortHeader
-                                id="feeYield"
-                                label="Fee yield"
-                                sort={sort}
-                                onSort={setSort}
-                                className="col-yield"
-                              />
-                              <th>Grade</th>
-                              <SortHeader
-                                id="score"
-                                label="Score"
-                                sort={sort}
-                                onSort={setSort}
-                              />
-                              <th aria-label="Details" />
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {paging.rows.map((p) => (
-                              <tr
-                                key={p.id}
-                                className={selected === p.id ? "selected" : ""}
-                                onClick={(event) => {
-                                  if (
-                                    (event.target as HTMLElement).closest(
-                                      "button, a",
-                                    )
-                                  )
-                                    return;
-                                  setSelected(p.id);
-                                }}
-                              >
-                                <td>
-                                  <button
-                                    className={`icon-button ${watched.includes(p.id) ? "saved" : ""}`}
-                                    disabled={mutating}
-                                    aria-label={`${watched.includes(p.id) ? "Unwatch" : "Watch"} ${p.pair}`}
-                                    onClick={() => toggleWatch(p)}
-                                  >
-                                    <Bookmark
-                                      size={16}
-                                      fill={
-                                        watched.includes(p.id)
-                                          ? "currentColor"
-                                          : "none"
-                                      }
-                                    />
-                                  </button>
-                                </td>
-                                <td>
-                                  <button
-                                    className="pair-button"
-                                    onClick={() => setSelected(p.id)}
-                                  >
-                                    <PairMark pool={p} quote={quote} />
-                                  </button>
-                                </td>
-                                <td>{money(p.tvl, true)}</td>
-                                <td className="col-volume">
-                                  {money(p.volume, true)}
-                                </td>
-                                <td>{money(p.fees, true)}</td>
-                                <td className="positive col-yield">
-                                  {pct(p.feeYield)}
-                                </td>
-                                <td>
-                                  <span className={`grade grade-${p.grade}`}>
-                                    {p.grade}
-                                  </span>
-                                </td>
-                                <td className="amber">
-                                  {p.score.toFixed(1)}
-                                  <span className="score-track">
-                                    <i style={{ width: `${p.score}%` }} />
-                                  </span>
-                                </td>
-                                <td>
-                                  <button
-                                    className="icon-button"
-                                    aria-label={`Details for ${p.pair}`}
-                                    onClick={() => setSelected(p.id)}
-                                  >
-                                    <ChevronRight size={16} />
-                                  </button>
-                                </td>
+                          <table className="pool-table">
+                            <thead>
+                              <tr>
+                                <th aria-label="Watchlist" />
+                                <th>Pair</th>
+                                <SortHeader
+                                  id="tvl"
+                                  label="TVL"
+                                  sort={sort}
+                                  onSort={setSort}
+                                />
+                                <SortHeader
+                                  id="volume"
+                                  label="24h volume"
+                                  sort={sort}
+                                  onSort={setSort}
+                                  className="col-volume"
+                                />
+                                <SortHeader
+                                  id="fees"
+                                  label="24h fees"
+                                  sort={sort}
+                                  onSort={setSort}
+                                />
+                                <SortHeader
+                                  id="feeYield"
+                                  label="Fee yield"
+                                  sort={sort}
+                                  onSort={setSort}
+                                  className="col-yield"
+                                />
+                                <th>Grade</th>
+                                <SortHeader
+                                  id="score"
+                                  label="Score"
+                                  sort={sort}
+                                  onSort={setSort}
+                                />
+                                <th aria-label="Details" />
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody>
+                              {paging.rows.map((p) => (
+                                <tr
+                                  key={p.id}
+                                  className={
+                                    selected === p.id ? "selected" : ""
+                                  }
+                                  onClick={(event) => {
+                                    if (
+                                      (event.target as HTMLElement).closest(
+                                        "button, a",
+                                      )
+                                    )
+                                      return;
+                                    setSelected(p.id);
+                                  }}
+                                >
+                                  <td>
+                                    <button
+                                      className={`icon-button ${watched.includes(p.id) ? "saved" : ""}`}
+                                      disabled={mutating}
+                                      aria-label={`${watched.includes(p.id) ? "Unwatch" : "Watch"} ${p.pair}`}
+                                      onClick={() => toggleWatch(p)}
+                                    >
+                                      <Bookmark
+                                        size={16}
+                                        fill={
+                                          watched.includes(p.id)
+                                            ? "currentColor"
+                                            : "none"
+                                        }
+                                      />
+                                    </button>
+                                  </td>
+                                  <td>
+                                    <button
+                                      className="pair-button"
+                                      onClick={() => setSelected(p.id)}
+                                    >
+                                      <PairMark pool={p} quote={quote} />
+                                    </button>
+                                  </td>
+                                  <td>{money(p.tvl, true)}</td>
+                                  <td className="col-volume">
+                                    {money(p.volume, true)}
+                                  </td>
+                                  <td>{money(p.fees, true)}</td>
+                                  <td className="positive col-yield">
+                                    {pct(p.feeYield)}
+                                  </td>
+                                  <td>
+                                    <span className={`grade grade-${p.grade}`}>
+                                      {p.grade}
+                                    </span>
+                                  </td>
+                                  <td className="amber">
+                                    {p.score.toFixed(1)}
+                                    <span className="score-track">
+                                      <i style={{ width: `${p.score}%` }} />
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <button
+                                      className="icon-button"
+                                      aria-label={`Details for ${p.pair}`}
+                                      onClick={() => setSelected(p.id)}
+                                    >
+                                      <ChevronRight size={16} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <Pager
+                        paging={paging}
+                        unit="pairs"
+                        note={
+                          <>
+                            {demo
+                              ? "Fixture snapshot · not live"
+                              : timestamp
+                                ? `Fetched ${new Date(timestamp * 1000).toLocaleTimeString()} · refreshes every 60s`
+                                : "Awaiting source"}{" "}
+                            · {settings.source}
+                          </>
+                        }
+                      />
+                    </div>
+                    <div className="risk-note">
+                      <ShieldCheck size={16} />
+                      <span>
+                        Score is a research ranking, not a guarantee. Missing
+                        metrics stay unknown — they are not zero. Open a pair
+                        before you size it.
+                      </span>
+                    </div>
+                    {pool && (
+                      <PoolDetail
+                        pool={pool}
+                        size={settings.size}
+                        watched={watched.includes(pool.id)}
+                        busy={mutating}
+                        toggle={() => toggleWatch(pool)}
+                        close={() => setSelected(null)}
+                      />
                     )}
-                    <Pager
-                      paging={paging}
-                      unit="pairs"
-                      note={
-                        <>
-                          {demo
-                            ? "Fixture snapshot · not live"
-                            : timestamp
-                              ? `Fetched ${new Date(timestamp * 1000).toLocaleTimeString()} · refreshes every 60s`
-                              : "Awaiting source"}{" "}
-                          · {settings.source}
-                        </>
-                      }
-                    />
-                  </div>
-                  <div className="risk-note">
-                    <ShieldCheck size={16} />
-                    <span>
-                      Score is a research ranking, not a guarantee. Missing
-                      metrics stay unknown — they are not zero. Open a pair
-                      before you size it.
-                    </span>
-                  </div>
-                  {pool && (
-                    <PoolDetail
-                      pool={pool}
-                      size={settings.size}
-                      watched={watched.includes(pool.id)}
-                      busy={mutating}
-                      toggle={() => toggleWatch(pool)}
-                      close={() => setSelected(null)}
-                    />
-                  )}
-                </>
-              )}
-              {active === "settings" && (
-                <SettingsForm
-                  settings={settings}
-                  demo={demo}
-                  onSave={setSettings}
-                />
-              )}
-              {["positions", "leaderboard"].includes(active) && (
-                <ResearchPanel
-                  kind={active}
-                  settings={settings}
-                  demo={demo}
-                  refresh={refresh}
-                />
-              )}
-            </>
-          )}
-          <div role="status" className="form-status">
-            {notice}
-          </div>
-        </main>
-        <StatusBar demo={demo} />
-        <footer className="app-footer">
-          <span>
-            Curator <span className="muted">/ independent LP research</span>
-          </span>
-          <Link href="/">How Curator works ↗</Link>
-        </footer>
+                  </>
+                )}
+                {active === "settings" && (
+                  <SettingsForm
+                    settings={settings}
+                    demo={demo}
+                    onSave={setSettings}
+                  />
+                )}
+                {["positions", "leaderboard"].includes(active) && (
+                  <ResearchPanel
+                    kind={active}
+                    settings={settings}
+                    demo={demo}
+                    refresh={refresh}
+                  />
+                )}
+              </>
+            )}
+            <div role="status" className="form-status">
+              {notice}
+            </div>
+          </main>
+          <StatusBar demo={demo} />
+          <footer className="app-footer">
+            <span>
+              Curator <span className="muted">/ independent LP research</span>
+            </span>
+            <Link href="/">How Curator works ↗</Link>
+          </footer>
+        </div>
       </div>
-    </div>
+    </PaletteProvider>
   );
 }
 function SortHeader({
@@ -857,7 +877,30 @@ function PoolDetail({
         <p className="mono muted">
           {chains[p.chain as keyof typeof chains] || p.chain}
         </p>
-        <code className="address">{p.address}</code>
+        <div className="detail-addresses">
+          <AddressChip
+            address={p.address}
+            chain={p.chain}
+            kind="pool"
+            label={`${p.pair} · pool`}
+            krystalUrl={p.url}
+            full
+          />
+          <span className="detail-tokens">
+            <TokenLink
+              symbol={p.token0 ?? ""}
+              address={p.token0Address}
+              chain={p.chain}
+            />
+            <span className="pair-slash">/</span>
+            <TokenLink
+              symbol={p.token1 ?? ""}
+              address={p.token1Address}
+              chain={p.chain}
+            />
+            <small>token contracts</small>
+          </span>
+        </div>
         <div className="detail-score">
           <strong>
             {p.score.toFixed(1)}
@@ -1152,6 +1195,7 @@ function SettingsForm({
 }
 type VaultPosition = {
   id: string;
+  pool_address: string;
   token0: string;
   token1: string;
   protocol: string;
@@ -1691,7 +1735,17 @@ function ResearchPanel({
         vaults.map((v) => (
           <article key={v.address} className="vault-card">
             <header>
-              <h2>{v.name}</h2>
+              <h2>
+                {v.name}
+                <AddressChip
+                  address={v.address}
+                  chain={v.chain_id}
+                  kind="vault"
+                  label={`${v.name} · vault`}
+                  krystalUrl={v.url}
+                  className="inline"
+                />
+              </h2>
               <a
                 className="text-link"
                 href={v.url}
@@ -1753,6 +1807,13 @@ function ResearchPanel({
                       </span>
                       {p.protocol && <span>{protocolLabel(p.protocol)}</span>}
                       {age && <span>{age}</span>}
+                      <AddressChip
+                        address={p.pool_address}
+                        chain={v.chain_id}
+                        kind="pool"
+                        label={`${p.token0}/${p.token1} · pool`}
+                        className="tiny"
+                      />
                     </span>
                   </div>
                   <RangeBar p={p} />
@@ -1825,9 +1886,13 @@ function ResearchPanel({
                   <tr key={o.address}>
                     <td>
                       <strong>{o.name}</strong>
-                      <small>
-                        {o.address.slice(0, 8)}…{o.address.slice(-6)}
-                      </small>
+                      <AddressChip
+                        address={o.address}
+                        chain={settings.chain}
+                        kind="wallet"
+                        label={`${o.name} · owner`}
+                        className="tiny"
+                      />
                     </td>
                     <td>{o.vaults}</td>
                     <td>{money(o.tvl, true)}</td>
@@ -1866,10 +1931,14 @@ function ResearchPanel({
                   <tr key={r.vault.address}>
                     <td>
                       <strong>{r.vault.name}</strong>
-                      <small>
-                        {r.vault.address.slice(0, 8)}…
-                        {r.vault.address.slice(-6)}
-                      </small>
+                      <AddressChip
+                        address={r.vault.address}
+                        chain={r.vault.chain_id}
+                        kind="vault"
+                        label={`${r.vault.name} · vault`}
+                        krystalUrl={r.url}
+                        className="tiny"
+                      />
                     </td>
                     <td>{money(r.vault.tvl, true)}</td>
                     <td>{pct(r.roi_pct)}</td>
