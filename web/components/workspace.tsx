@@ -1074,14 +1074,82 @@ type VaultPosition = {
   id: string;
   token0: string;
   token1: string;
+  protocol: string;
   status: string;
   value: number;
+  deposit: number;
   pnl: number;
+  roi_pct: number;
+  il: number;
   fee_pending: number;
+  fee_claimed: number;
+  fee_apr: number;
+  total_apr: number;
   min_price: number;
   max_price: number;
   current_price: number | null;
+  opened_ts: number;
 };
+/** Prices across many magnitudes without exponent notation. */
+function price(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const abs = Math.abs(value);
+  if (abs >= 1000)
+    return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  if (abs >= 1)
+    return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return value.toLocaleString("en-US", { maximumSignificantDigits: 4 });
+}
+function ageLabel(openedTs: number) {
+  if (!openedTs) return "";
+  const days = (Date.now() / 1000 - openedTs) / 86400;
+  if (days < 1) return `${Math.max(1, Math.round(days * 24))}h`;
+  if (days < 60) return `${Math.round(days)}d`;
+  return `${Math.round(days / 30)}mo`;
+}
+function signed(value: number) {
+  return `${value > 0 ? "+" : ""}${money(value)}`;
+}
+/** Where the current price sits inside the position's range; clamps when out of range. */
+function RangeBar({ p }: { p: VaultPosition }) {
+  const span = p.max_price - p.min_price;
+  const at =
+    p.current_price == null || span <= 0
+      ? null
+      : Math.min(1, Math.max(0, (p.current_price - p.min_price) / span));
+  const inRange = p.status === "IN_RANGE";
+  const below = p.current_price != null && p.current_price < p.min_price;
+  const above = p.current_price != null && p.current_price > p.max_price;
+  // Half-width of the range around its midpoint: how much room the position has.
+  const mid = (p.min_price + p.max_price) / 2;
+  const width =
+    span > 0 && mid > 0 ? `±${((span / 2 / mid) * 100).toFixed(0)}%` : "";
+  return (
+    <div
+      className={`range-bar ${inRange ? "in" : "out"}`}
+      role="img"
+      aria-label={`Range ${price(p.min_price)} to ${price(p.max_price)}, price ${price(p.current_price)}`}
+    >
+      <div className="range-track">
+        <span className="range-fill" />
+        {at != null && (
+          <span
+            className={`range-marker${below ? " below" : ""}${above ? " above" : ""}`}
+            style={{ left: `${at * 100}%` }}
+          />
+        )}
+      </div>
+      <div className="range-labels">
+        <span>{price(p.min_price)}</span>
+        <span className="range-now">
+          {price(p.current_price)}
+          {width && <small>{width}</small>}
+        </span>
+        <span>{price(p.max_price)}</span>
+      </div>
+    </div>
+  );
+}
 type Vault = {
   address: string;
   name: string;
@@ -1302,32 +1370,63 @@ function ResearchPanel({
                 note="Vault-wide earnings"
               />
             </div>
-            {v.positions.map((p) => (
-              <div className="position-row" key={p.id}>
-                <PairMark
-                  pool={{
-                    pair: `${p.token0}/${p.token1}`,
-                    token0: p.token0,
-                    token1: p.token1,
-                    protocol: "",
-                  }}
-                  showMeta={false}
-                />
-                <span
-                  className={p.status === "IN_RANGE" ? "positive" : "amber"}
-                >
-                  {p.status.replaceAll("_", " ")}
-                </span>
-                <span>Value {money(p.value)}</span>
-                <span>PnL {money(p.pnl)}</span>
-                <span>Pending fees {money(p.fee_pending)}</span>
-                <small>
-                  Range {p.min_price.toPrecision(4)} –{" "}
-                  {p.max_price.toPrecision(4)} · Price{" "}
-                  {p.current_price?.toPrecision(4) ?? "Unknown"}
-                </small>
+            {v.positions.length > 0 && (
+              <div className="position-head" aria-hidden="true">
+                <span>Position</span>
+                <span>Range · price</span>
+                <span>Value</span>
+                <span>PnL</span>
+                <span>Fees</span>
               </div>
-            ))}
+            )}
+            {v.positions.map((p) => {
+              const inRange = p.status === "IN_RANGE";
+              const age = ageLabel(p.opened_ts);
+              return (
+                <div className="position-row" key={p.id}>
+                  <div className="position-id">
+                    <PairMark
+                      pool={{
+                        pair: `${p.token0}/${p.token1}`,
+                        token0: p.token0,
+                        token1: p.token1,
+                        protocol: "",
+                      }}
+                      showMeta={false}
+                    />
+                    <span className="position-meta">
+                      <span className={`status-pill ${inRange ? "in" : "out"}`}>
+                        {inRange ? "In range" : "Out of range"}
+                      </span>
+                      {p.protocol && <span>{protocolLabel(p.protocol)}</span>}
+                      {age && <span>{age}</span>}
+                    </span>
+                  </div>
+                  <RangeBar p={p} />
+                  <div className="position-stat">
+                    <strong>{money(p.value)}</strong>
+                    <small>Deposited {money(p.deposit)}</small>
+                  </div>
+                  <div className="position-stat">
+                    <strong className={p.pnl >= 0 ? "positive" : "amber"}>
+                      {signed(p.pnl)}
+                    </strong>
+                    <small>
+                      {p.roi_pct > 0 ? "+" : ""}
+                      {p.roi_pct.toFixed(2)}% ROI
+                      {p.il ? ` · IL ${money(p.il)}` : ""}
+                    </small>
+                  </div>
+                  <div className="position-stat">
+                    <strong>{money(p.fee_pending)}</strong>
+                    <small>
+                      Claimed {money(p.fee_claimed)}
+                      {p.fee_apr ? ` · ${p.fee_apr.toFixed(1)}% APR` : ""}
+                    </small>
+                  </div>
+                </div>
+              );
+            })}
           </article>
         ))
       ) : boardView === "owners" ? (
