@@ -43,11 +43,9 @@ export function StatusBar({ demo = false }: { demo?: boolean }) {
   }, []);
   const last = t.samples[0];
   const upstream = t.samples.find((s) => s.upstreamMs > 0);
-  const backendTone = !t.online
-    ? "bad"
-    : last
-      ? tone(last.ms, last.ok)
-      : "idle";
+  // Our own share of the round trip: bridge + backend, minus the upstream wait.
+  const own = last ? Math.max(0, last.ms - last.upstreamMs) : 0;
+  const backendTone = !t.online ? "bad" : last ? tone(own, last.ok) : "idle";
   const age = t.dataAt ? now / 1000 - t.dataAt : null;
   const stale = age != null && t.interval != null && age > t.interval * 2;
   return (
