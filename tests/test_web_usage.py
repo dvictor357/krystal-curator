@@ -26,6 +26,7 @@ async def client(monkeypatch):
     monkeypatch.setenv("CURATOR_API_SECRET", "web-integration-test-secret-32-characters")
     monkeypatch.setenv("CURATOR_ADMIN_ADDRESSES", ADMIN)
     monkeypatch.delenv("CURATOR_SERVER_FETCH", raising=False)
+    web_usage._buckets.clear()  # other modules' requests must not leak into this DB
     from krystal_curator import web_auth
 
     users = {

@@ -15,6 +15,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import HTTPException, Request
+from tortoise.exceptions import IntegrityError
 from tortoise.expressions import F
 
 from .web_db import Usage, User
@@ -38,12 +39,17 @@ async def flush() -> int:
         _buckets.clear()
     written = 0
     for (user_id, day, route), (count, errors, ms_total) in pending.items():
-        row, _ = await Usage.get_or_create(
-            user_id=user_id, day=day, route=route, defaults={"count": 0}
-        )
-        await Usage.filter(id=row.id).update(
-            count=F("count") + count, errors=F("errors") + errors, ms_total=F("ms_total") + ms_total
-        )
+        try:
+            row, _ = await Usage.get_or_create(
+                user_id=user_id, day=day, route=route, defaults={"count": 0}
+            )
+            await Usage.filter(id=row.id).update(
+                count=F("count") + count,
+                errors=F("errors") + errors,
+                ms_total=F("ms_total") + ms_total,
+            )
+        except IntegrityError:
+            continue  # account deleted between the request and the flush: nothing to keep
         written += 1
     return written
 
