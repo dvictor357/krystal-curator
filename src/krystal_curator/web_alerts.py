@@ -181,7 +181,7 @@ async def tick(cache: Cache) -> int:
         await web_verdicts.record_samples(rows)
         for position_id, value in state.items():
             await AlertState.update_or_create(
-                user_id=prefs.user_id, position_id=position_id, defaults={"state": value}
+                user_id=prefs.user_id, position_id=position_id[:120], defaults={"state": value}
             )
         stale = set(previous) - set(state)
         if stale:

@@ -25,7 +25,16 @@ async function bridge(
   const path = (await params).path.join("/");
   if (!allowed.get(path)?.includes(req.method))
     return NextResponse.json({ error: "Not found." }, { status: 404 });
-  const expectedOrigin = process.env.CURATOR_ORIGIN || new URL(req.url).origin;
+  // SIWE and CSRF both bind to this value; a Host-derived fallback would let a spoofed
+  // Host header choose it, so production refuses to run without the explicit setting.
+  const expectedOrigin =
+    process.env.CURATOR_ORIGIN ||
+    (process.env.NODE_ENV === "production" ? "" : new URL(req.url).origin);
+  if (!expectedOrigin)
+    return NextResponse.json(
+      { error: "CURATOR_ORIGIN is not configured on this deployment." },
+      { status: 503 },
+    );
   if (req.method !== "GET" && req.headers.get("origin") !== expectedOrigin)
     return NextResponse.json(
       { error: "Invalid request origin." },

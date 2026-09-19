@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import os
 import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -53,7 +54,32 @@ async def lifespan(app: FastAPI):
                 log.warning("usage: final flush failed", exc_info=True)
 
 
-app = FastAPI(title="Curator analytics", dependencies=[Depends(authorize)], lifespan=lifespan)
+# No public OpenAPI/Swagger: the API host is reachable on the internet (fronted for Vercel)
+# and its schema is nobody's business. CURATOR_API_DOCS=true re-enables it locally.
+_docs = os.environ.get("CURATOR_API_DOCS", "false").lower() == "true"
+app = FastAPI(
+    title="Curator analytics",
+    dependencies=[Depends(authorize)],
+    lifespan=lifespan,
+    docs_url="/docs" if _docs else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if _docs else None,
+)
+
+
+# Liveness for the container healthcheck: mounted as its own app so the bearer
+# dependency (applied to every route of the main app) does not gate it.
+_health = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+
+@_health.get("/")
+def healthz():
+    return {"ok": True}
+
+
+app.mount("/healthz", _health)
+
+
 app.include_router(router)
 app.middleware("http")(web_usage.middleware)
 

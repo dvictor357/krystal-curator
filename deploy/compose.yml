@@ -39,7 +39,7 @@ services:
     ports:
       - "127.0.0.1:${CURATOR_API_PORT:-8100}:8100"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/docs').status==200 else 1)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/healthz').status==200 else 1)\""]
       interval: 15s
       timeout: 5s
       retries: 10

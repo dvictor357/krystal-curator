@@ -28,7 +28,7 @@ async def log_rows(user: User, rows: list[dict]) -> None:
     fresh = [
         Verdict(
             user_id=user.id,
-            position_id=r["id"],
+            position_id=str(r["id"])[:120],
             pair=r["pair"][:60],
             kind=r["kind"],
             best_pool=(r["best"] or {}).get("pair", "")[:60],
@@ -146,6 +146,14 @@ async def record_samples(rows: list[dict]) -> int:
     return len(fresh)
 
 
+def _per_user(pairs: list[tuple[str, float]]) -> list[float]:
+    """One value per account: the median of that account's values."""
+    grouped: dict[str, list[float]] = {}
+    for user_id, value in pairs:
+        grouped.setdefault(user_id, []).append(value)
+    return [m for m in (_median(v) for v in grouped.values()) if m is not None]
+
+
 def _median(values: list[float]) -> float | None:
     if not values:
         return None
@@ -228,12 +236,20 @@ async def track_record(days: int = 30, now: datetime | None = None) -> dict:
             v, latest.get((v.user_id, v.position_id)), samples.get(v.best_pool_id, []), now
         )
         if outcome:
+            outcome["userId"] = str(v.user_id)
             judged.append(outcome)
+    # Browser-fed data is self-reported, so the public numbers are medians of per-account
+    # medians: one account with many positions (or made-up payloads) moves the total by
+    # at most one vote.
     stay = [o for o in judged if o["predictedNetDay"] is not None]
-    alts = [o["alternative"] for o in judged if o.get("alternative")]
-    ratio = [
-        o["realisedFeeDay"] / o["predictedNetDay"] for o in stay if o["predictedNetDay"] > 0.05
-    ]
+    alts = [o["alternative"] | {"userId": o["userId"]} for o in judged if o.get("alternative")]
+    per_user_ratio = _per_user(
+        [
+            (o["userId"], o["realisedFeeDay"] / o["predictedNetDay"])
+            for o in stay
+            if o["predictedNetDay"] > 0.05
+        ]
+    )
     return {
         "windowDays": days,
         "generatedAt": now.timestamp(),
@@ -243,15 +259,27 @@ async def track_record(days: int = 30, now: datetime | None = None) -> dict:
         "judged": len(judged),
         "stay": {
             "n": len(stay),
-            "medianPredictedNetDay": _median([o["predictedNetDay"] for o in stay]),
-            "medianRealisedFeeDay": _median([o["realisedFeeDay"] for o in stay]),
-            "medianRealisedOverPredicted": _median(ratio),
+            "medianPredictedNetDay": _median(
+                _per_user([(o["userId"], o["predictedNetDay"]) for o in stay])
+            ),
+            "medianRealisedFeeDay": _median(
+                _per_user([(o["userId"], o["realisedFeeDay"]) for o in stay])
+            ),
+            "medianRealisedOverPredicted": _median(per_user_ratio),
         },
         "rotate": {
             "n": len(alts),
-            "hitRate": (sum(1 for a in alts if a["hit"]) / len(alts)) if alts else None,
-            "medianPredictedUpliftDay": _median([a["predictedUpliftDay"] for a in alts]),
-            "medianRealisedUpliftDay": _median([a["realisedUpliftDay"] for a in alts]),
+            "hitRate": (
+                _median(_per_user([(a["userId"], 1.0 if a["hit"] else 0.0) for a in alts]))
+                if alts
+                else None
+            ),
+            "medianPredictedUpliftDay": _median(
+                _per_user([(a["userId"], a["predictedUpliftDay"]) for a in alts])
+            ),
+            "medianRealisedUpliftDay": _median(
+                _per_user([(a["userId"], a["realisedUpliftDay"]) for a in alts])
+            ),
             "medianDays": _median([o["days"] for o in judged if o.get("alternative")]),
         },
         "poolSamples": sum(len(v) for v in samples.values()),
