@@ -3433,3 +3433,52 @@ td > .address-chip.tiny {
   font-size: 12px;
   line-height: 1.6;
 }
+
+/* Track record */
+.track-grid .metric strong {
+  font-size: 26px;
+}
+.track-record .fine-print {
+  margin-top: 12px;
+}
+.track-record.compact .metric-grid {
+  margin-bottom: 8px;
+}
+.track-record.compact .metric {
+  padding: 14px 16px;
+}
+.track-record.compact .metric strong {
+  font-size: 20px;
+}
+.record-details {
+  margin: 0 0 18px;
+  border: 1px solid var(--line);
+  background: #0e100c;
+}
+.record-details summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  list-style: none;
+}
+.record-details summary::-webkit-details-marker {
+  display: none;
+}
+.record-details summary .eyebrow {
+  color: var(--amber);
+}
+.record-details[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+.record-details .track-record {
+  padding: 14px;
+}
+@media (max-width: 720px) {
+  .track-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

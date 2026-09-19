@@ -1,5 +1,6 @@
 import { AmbientField } from "@/components/ambient";
 import { OpenCurator } from "@/components/open-curator";
+import { TrackRecord } from "@/components/track-record";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -26,6 +27,7 @@ export default function Home() {
         <nav aria-label="Main navigation">
           <a href="#book">The book</a>
           <a href="#method">How it works</a>
+          <a href="#record">Track record</a>
           <Link href="/demo">
             Demo <ArrowUpRight size={14} />
           </Link>
@@ -204,6 +206,25 @@ export default function Home() {
               </article>
             ))}
           </div>
+        </section>
+        <section className="section wrap" id="record">
+          <div className="section-heading">
+            <div>
+              <div className="eyebrow">Track record</div>
+              <h2>
+                We keep score.
+                <br />
+                <span className="muted">Against ourselves.</span>
+              </h2>
+            </div>
+            <p>
+              Every rotation verdict Curator shows is logged with what we
+              predicted. A day later we compare it with what the position and
+              the alternative pool actually paid. This is the live, anonymous
+              total — good or bad.
+            </p>
+          </div>
+          <TrackRecord />
         </section>
         <section className="closing wrap">
           <div>

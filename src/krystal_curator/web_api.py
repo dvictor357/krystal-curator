@@ -198,8 +198,16 @@ async def rotations(
     rows, meta, fetched_at = await run_in_threadpool(compute)
     meta.apply(response, 60)
     await web_verdicts.log_rows(user, rows)
+    await web_verdicts.record_samples(rows)
     await web_verdicts.attach_history(user, rows)
     return {"rows": rows, "fetchedAt": fetched_at}
+
+
+@app.get("/track-record")
+async def track_record(days: Annotated[int, Query(ge=7, le=90)] = 30, response: Response = None):
+    """Aggregate, anonymous: every verdict in the window against what followed."""
+    response.headers["Cache-Control"] = "private, max-age=300"
+    return finite(await web_verdicts.track_record(days))
 
 
 @app.get("/leaderboard", dependencies=[Depends(market_user)])

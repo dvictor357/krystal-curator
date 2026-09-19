@@ -100,3 +100,79 @@ async def test_attach_history_groups_per_position(db):
     await web_verdicts.attach_history(user, rows)
     assert rows[0]["history"]["count"] == 1
     assert rows[1]["history"] is None
+
+
+def _row(kind="rotate", fees=10.0, net=1.0, uplift=5.0, cost=3.0):
+    r = row(kind=kind, fees=fees, net=net, uplift=uplift)
+    r["cost"] = cost
+    r["current"] |= {"poolId": "4663:uniswapv4:0xcur", "poolFee24": 500.0, "poolTvl": 100_000.0}
+    if r["best"]:
+        r["best"] |= {"feeDay": 6.0, "ilDay": 0.5, "tvl": 50_000.0, "poolFee24": 900.0}
+    return r
+
+
+async def test_samples_once_per_hour_per_pool(db):
+    from krystal_curator.web_db import PoolSample
+
+    assert await web_verdicts.record_samples([_row()]) == 2
+    assert await web_verdicts.record_samples([_row()]) == 0
+    assert await PoolSample.all().count() == 2
+
+
+def test_judge_needs_a_day_and_two_samples():
+    from krystal_curator.web_db import PoolSample
+
+    now = datetime(2026, 9, 19, tzinfo=UTC)
+    hot = "4663:uniswapv4:0xhot"
+    v = make("rotate", hot, now - timedelta(days=3), fees=4.0, net=1.0, uplift=5.0)
+    v.best_fee_day, v.best_il_day, v.cost = 6.0, 0.5, 3.0
+    assert web_verdicts.judge(v, None, [], now) is None
+    young = make("rotate", hot, v.at + timedelta(hours=20), fees=6.0)
+    assert web_verdicts.judge(v, young, [], now) is None  # under a day of evidence
+    later = make("rotate", hot, now, fees=10.0)
+    out = web_verdicts.judge(v, later, [], now)
+    assert out["realisedFeeDay"] == pytest.approx(2.0) and out["alternative"] is None
+    samples = [
+        PoolSample(pool_id=hot, fee24=900.0, tvl=50_000.0, at=now - timedelta(days=2)),
+        PoolSample(pool_id=hot, fee24=1100.0, tvl=50_000.0, at=now - timedelta(days=1)),
+        PoolSample(pool_id=hot, fee24=5000.0, tvl=50_000.0, at=now + timedelta(days=1)),  # after
+    ]
+    out = web_verdicts.judge(v, later, samples, now)
+    alt = out["alternative"]
+    assert alt["samples"] == 2
+    share = 1000 / (50_000 + 1000)  # value 1000 into a 50k pool, mean fee24 1000
+    assert alt["realisedFeeDay"] == pytest.approx(1000 * share)
+    assert alt["realisedUpliftDay"] == pytest.approx(1000 * share - 2.0 - 3.0 / 3)
+    assert alt["hit"] is True
+
+
+async def test_track_record_aggregates_and_anonymises(db):
+    user = db
+    other = await User.create(address="0x" + "2" * 40)
+    now = datetime.now(UTC)
+    hot = "4663:uniswapv4:0xhot"
+    for u, pos, at, fees in (
+        (user, "p1", 3, 4.0),
+        (user, "p1", 0, 10.0),
+        (other, "p9", 2, 1.0),
+        (other, "p9", 0, 5.0),
+    ):
+        v = make("rotate", hot, now - timedelta(days=at), fees=fees, net=1.0, uplift=5.0)
+        v.user = u
+        v.position_id = pos
+        v.best_fee_day, v.best_il_day, v.cost = 6.0, 0.5, 3.0
+        await v.save()
+    from krystal_curator.web_db import PoolSample
+
+    for d in (2.5, 1.5, 0.5):
+        s = PoolSample(pool_id=hot, fee24=1000.0, tvl=50_000.0)
+        await s.save()
+        s.at = now - timedelta(days=d)
+        await s.save()
+    tr = await web_verdicts.track_record(30, now)
+    assert tr["verdicts"]["total"] == 4 and tr["verdicts"]["rotate"] == 4
+    assert tr["users"] == 2 and tr["positions"] == 2
+    assert tr["judged"] == 2 and tr["rotate"]["n"] == 2
+    assert tr["rotate"]["hitRate"] == 1.0
+    assert tr["stay"]["medianRealisedFeeDay"] == pytest.approx(2.0)
+    assert "0x" not in str(tr) and "p1" not in str(tr)

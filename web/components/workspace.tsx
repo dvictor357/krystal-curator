@@ -30,6 +30,7 @@ import { clearSignedInHint } from "@/lib/session";
 import { StatusBar } from "@/components/statusbar";
 import { Pager } from "@/components/pager";
 import { AmbientField } from "@/components/ambient";
+import { TrackRecord } from "@/components/track-record";
 import { PaletteProvider } from "@/components/palette";
 import { AddressChip, TokenLink } from "@/components/address";
 import { usePalette } from "@/components/palette";
@@ -1860,6 +1861,15 @@ function ResearchPanel({
             Owners
           </button>
         </div>
+      )}
+      {kind === "positions" && vaults.length > 0 && (
+        <details className="record-details">
+          <summary>
+            <span className="eyebrow">Track record</span> how Curator&apos;s
+            verdicts have held up, all users, last 30 days
+          </summary>
+          <TrackRecord compact />
+        </details>
       )}
       {kind === "positions" && concentration && (
         <p className="notice concentration" role="note">

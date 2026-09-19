@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 
 from starlette.concurrency import run_in_threadpool
 
-from . import api, notify, vaults, web_rotation
+from . import api, notify, vaults, web_rotation, web_verdicts
 from .models import Pool, default_quote
 from .monitor import Alert, Monitor
 from .profiles import PROFILES
@@ -136,6 +136,15 @@ async def tick(cache: Cache) -> int:
             continue
         previous = {s.position_id: s.state async for s in AlertState.filter(user_id=prefs.user_id)}
         alerts, state = evaluate(prefs, positions_entry.value, pools_entry.value, previous)
+        # Keep the verdict log and pool samples moving for this user even between page views.
+        rows = web_rotation.rotation_rows(
+            positions_entry.value,
+            pools_entry.value,
+            PROFILES.get(prefs.profile, PROFILES["balanced"]),
+            quote=default_quote(prefs.chain),
+        )
+        await web_verdicts.log_rows(prefs.user, rows)
+        await web_verdicts.record_samples(rows)
         for position_id, value in state.items():
             await AlertState.update_or_create(
                 user_id=prefs.user_id, position_id=position_id, defaults={"state": value}

@@ -92,6 +92,9 @@ class Verdict(models.Model):
     best_pool_id = fields.CharField(max_length=180, default="")
     uplift_day = fields.FloatField(default=0)
     payback_days = fields.FloatField(null=True)
+    best_fee_day = fields.FloatField(default=0)  # planned fee/day in the alternative, our size
+    best_il_day = fields.FloatField(default=0)  # σ²/8 IL/day assumed for the alternative
+    cost = fields.FloatField(default=0)  # switch cost we charged the verdict with
     value = fields.FloatField()
     current_net_day = fields.FloatField()
     fees_total = fields.FloatField()  # position fees (claimed + pending) at that moment
@@ -101,6 +104,21 @@ class Verdict(models.Model):
     class Meta:
         table = "curator_verdicts"
         indexes = (("user", "position_id", "at"),)
+
+
+class PoolSample(models.Model):
+    """Pool-level fee24 / TVL seen while a verdict pointed at (or sat in) that pool; the
+    track record replays a verdict's size through these to see what the pool really paid."""
+
+    id = fields.IntField(primary_key=True)
+    pool_id = fields.CharField(max_length=180)
+    fee24 = fields.FloatField()
+    tvl = fields.FloatField()
+    at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "curator_pool_samples"
+        indexes = (("pool_id", "at"),)
 
 
 class AlertState(models.Model):

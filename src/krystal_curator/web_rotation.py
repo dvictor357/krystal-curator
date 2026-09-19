@@ -66,6 +66,8 @@ def rotation_row(
             "inScreener": current is not None,
             "feesTotal": pos.fees_total,
             "ageDays": pos.age_days,
+            "poolFee24": current.s24h.fee if current else None,
+            "poolTvl": current.tvl if current else None,
         },
         "best": (
             {
@@ -73,7 +75,10 @@ def rotation_row(
                 "poolId": f"{best.pool.chain_id}:{best.pool.protocol}:{best.pool.address.lower()}",
                 "grade": best.scored.grade,
                 "tvl": best.pool.tvl,
+                "poolFee24": best.pool.s24h.fee,
                 "spike": best.spike,
+                "feeDay": best.fee_day,
+                "ilDay": best.sim.il_day,
                 "upliftDay": best.uplift_day,
                 "paybackDays": best.payback_days,
             }
