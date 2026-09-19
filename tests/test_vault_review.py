@@ -216,7 +216,7 @@ def test_reports_are_written_dated_with_provenance(offline, tmp_path):
     assert "| USDG/RCAT | IN_RANGE |" in text
     assert "unknown" not in text.split("## Open positions")[1].split("## Closed")[0]
     data = json.loads(js.read_text())
-    assert data["url"] == URL and data["served"]["detail"] == "ok"
+    assert data["url"].startswith(URL + "?r=") and data["served"]["detail"] == "ok"
     assert data["settings"]["minimum_range_pct"] == 5
     assert data["raw"]["settings"]["goal"] == rv.settings.goal
     assert "vaultData" not in json.dumps(data["raw"]["plans"])  # heavy snapshot stripped

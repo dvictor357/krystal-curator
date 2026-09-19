@@ -35,7 +35,7 @@ from .api import KrystalError
 from .autoconfig import recommend
 from .config import Config
 from .enrich import Flow, FlowCache, TokenInfo, TokenMeta
-from .models import Pool
+from .models import Pool, krystal_url
 from .monitor import Monitor
 from .position import simulate
 from .positions import POSITIONS_UNITS, Position, fetch_positions
@@ -404,7 +404,7 @@ class RotationModal(ModalScreen[str | None]):
                 (f"{cd.pool.protocol:<10}", "cyan"),
                 (f"{cd.pool.fee_tier_pct:>5.2f}%  ", ""),
                 (f"{cd.scored.grade}  ", "bold"),
-                (f"net {cd.sim.net_day:>+8,.0f}$/d  ", "green" if cd.sim.net_day > 0 else "red"),
+                (f"net {cd.net_day:>+8,.0f}$/d  ", "green" if cd.net_day > 0 else "red"),
                 (f"uplift {cd.uplift_day:>+8,.0f}$/d  ", "green" if cd.uplift_day > 0 else "red"),
                 (f"payback {pb}  ", ""),
                 (f"share {cd.sim.share * 100:>5.1f}%  ", "red" if cd.sim.share >= 0.25 else ""),
@@ -705,7 +705,7 @@ class PositionsScreen(Screen[str | None]):
             self.curator.positions = direct
         self.curator.monitor.direct = self.curator.positions
         self.curator.monitor.vaults = vaults
-        for a in self.curator.monitor._position_alerts():
+        for a in self.curator.monitor.position_alerts():
             self.app.notify(a.text, title=a.title, severity=a.severity, timeout=30)
         self._fill()
         if err:
@@ -941,9 +941,9 @@ class PositionsScreen(Screen[str | None]):
                 r.add_row(
                     Text(cd.pool.pair, style="white", no_wrap=True),
                     _grade_text(cd.scored.grade),
-                    f"{cd.sim.fee_day:,.0f}",
+                    f"{cd.fee_day:,.0f}" + ("!" if cd.spike else ""),
                     f"{cd.sim.il_day:,.0f}",
-                    _color_num(f"{cd.sim.net_day:+,.0f}", cd.sim.net_day, 1, 0),
+                    _color_num(f"{cd.net_day:+,.0f}", cd.net_day, 1, 0),
                     _color_num(f"{cd.sim.share * 100:.1f}%", cd.sim.share, 0.0, 0.25, invert=True),
                     _color_num(f"{cd.uplift_day:+,.0f}", cd.uplift_day, 1, 0),
                     _days(cd.payback_days),
@@ -1080,7 +1080,7 @@ class PositionsScreen(Screen[str | None]):
             return
         v = next((v for v in self.curator.vaults if v.name == p.vault), None)
         sc = self.curator.pool_for(p.pool_address, p.pool_alt)
-        webbrowser.open(v.url if v else sc.pool.url if sc else "https://defi.krystal.app/account")
+        webbrowser.open(v.url if v else sc.pool.url if sc else krystal_url("/account"))
 
     def action_jump(self) -> None:
         p = self._selected()
@@ -1488,9 +1488,8 @@ SETTINGS: list[tuple[str, str, str, str, dict]] = [
         "pool_source",
         "pool feed",
         "choice",
-        {"options": ["krystal", "rhpools"], "restart": True},
+        {"options": ["krystal"], "restart": True},
     ),
-    ("FEED", "rhpools_url", "rhpools URL", "text", {"restart": True}),
     (
         "FEED",
         "images",

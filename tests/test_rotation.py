@@ -93,3 +93,76 @@ def test_profile_filter_applies():
     small = pool("0xsmall", "AI", 20_000, 5_000, vol=25)  # below balanced floor
     r = plan(pos(5_000), 5.0, [cur, small], PROFILES["balanced"], quote="USDG", current_pool=cur)
     assert r.candidates == [] and "no candidate" in r.verdict
+
+
+def test_rotation_kind_matches_verdict():
+    cur = pool("0xcur", "ETH", 10_000_000, 5_000, vol=2)
+    hot = pool("0xhot", "AI", 500_000, 20_000, vol=25)
+    r = plan(pos(10_000), 5.0, [cur, hot], PROFILES["degen"], quote="USDG", current_pool=cur)
+    assert r.kind in {"rotate", "consider", "stay", "none"}
+    assert r.verdict.lower().startswith(r.kind if r.kind != "none" else "no")
+    empty = plan(pos(10_000), 5.0, [cur], PROFILES["degen"], quote="USDG", current_pool=cur)
+    assert empty.kind == "none"
+
+
+def test_rotation_rows_are_json_ready():
+    from krystal_curator.vaults import Vault
+    from krystal_curator.web_rotation import rotation_rows
+
+    cur = pool("0xcur", "ETH", 10_000_000, 5_000, vol=2)
+    hot = pool("0xhot", "AI", 500_000, 20_000, vol=25)
+    closed = pos(10_000)
+    closed.status = "CLOSED"
+    vault = Vault(
+        chain_id=4663,
+        address="0xv",
+        name="V",
+        vault_type="autofarm",
+        owned=True,
+        tvl=1,
+        pnl=0,
+        apr=0,
+        fee_generated=0,
+        earning_24h=0,
+        earning_30d=0,
+        risk="",
+        age_days=1,
+        my_value=1,
+        my_deposit=1,
+        my_withdrawn=0,
+        positions=[pos(10_000), closed],
+    )
+    rows = rotation_rows([vault], [cur, hot], PROFILES["degen"], quote="USDG")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["id"] == "p"
+    assert row["current"]["grade"] and row["current"]["sigmaKnown"]
+    assert row["best"]["pair"] == "USDG/AI"
+    assert row["candidates"][0]["poolId"] == "4663:uniswapv4:0xhot"
+    assert row["edge"]["name"] in {"lower", "upper"}
+    assert row["kind"] == ("rotate" if row["best"]["paybackDays"] <= 3 else row["kind"])
+
+
+def test_conservative_basis_and_spike_flag():
+    from krystal_curator.models import Stat
+
+    cur = pool("0xcur", "ETH", 10_000_000, 5_000, vol=2)
+    spiky = pool("0xspk", "MEME", 500_000, 20_000, vol=25)
+    spiky.s7d = Stat(volume=1, fee=20_000 * 7 / 5, apr=0)  # 7d average is a fifth of 24h
+    steady = pool("0xstd", "AI", 500_000, 6_000, vol=25)
+    r = plan(
+        pos(10_000), 5.0, [cur, spiky, steady], PROFILES["degen"], quote="USDG", current_pool=cur
+    )
+    by = {c.pool.address: c for c in r.candidates}
+    assert by["0xspk"].spike and not by["0xstd"].spike
+    assert by["0xspk"].fee_day < by["0xspk"].sim.fee_day  # planned on the 7d number
+    assert by["0xstd"].fee_day == by["0xstd"].sim.fee_day
+    # Steady pool ranks first once the spike is discounted.
+    assert r.candidates[0].pool.address == "0xstd"
+
+
+def test_dust_position_gets_no_verdict():
+    cur = pool("0xcur", "ETH", 10_000_000, 5_000, vol=2)
+    hot = pool("0xhot", "AI", 500_000, 20_000, vol=25)
+    r = plan(pos(0.15), 0.0, [cur, hot], PROFILES["degen"], quote="USDG", current_pool=cur)
+    assert r.kind == "none" and "too small" in r.verdict

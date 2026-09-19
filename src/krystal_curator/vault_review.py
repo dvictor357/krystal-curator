@@ -35,8 +35,8 @@ from urllib.parse import urlparse
 from . import net
 from .analytics import TrackRecord, track_record
 from .api import _HEADERS, KrystalError
-from .models import fnum
-from .vaults import Vault, fetch_vault
+from .models import fnum, krystal_url
+from .vaults import VAULTS, Vault, _attach_strategies, _parse_vault
 
 
 class Evaluation(Protocol):
@@ -347,13 +347,33 @@ class Review:
         return track_record(self.vault.closed if self.vault else [])
 
 
-def _agent_get(path: str, params: dict) -> dict:
-    r = net.get(f"{AGENT_API}/{path}", params=params, headers=_HEADERS, timeout=30)
+def review_sources(
+    chain_id: int, address: str, *, plans_limit: int = PLANS_PAGE, timeframes=TIMEFRAMES
+) -> dict[str, tuple[str, dict]]:
+    """name → (url, params) for every public source one review reads; the browser or the
+    server can fetch them, `build_review` turns the payloads into a Review."""
+    address = address.lower()
+    q = {"chainId": chain_id, "vaultAddress": address}
+    out = {
+        "detail": (f"{VAULTS}/{chain_id}/{address}", {}),
+        "settings": (f"{AGENT_API}/vault-agent-settings", q),
+        "plans": (
+            f"{AGENT_API}/auto-farming-action-plans",
+            {**q, "offset": 0, "limit": max(1, plans_limit)},
+        ),
+    }
+    for tf in timeframes:
+        out[f"perf_{tf}"] = (f"{PERF_API}/{chain_id}/{address}", {"timeframe": tf})
+    return out
+
+
+def _source_get(url: str, params: dict) -> dict | list:
+    r = net.get(url, params=params, headers=_HEADERS, timeout=30)
     if r.status_code != 200:
-        raise net.status_error(r, path)
+        raise net.status_error(r, url.rsplit("/", 1)[-1])
     data = r.json()
-    if not isinstance(data, dict):
-        raise KrystalError(f"{path}: unexpected payload")
+    if not isinstance(data, (dict, list)):
+        raise KrystalError(f"{url}: unexpected payload")
     return data
 
 
@@ -364,33 +384,66 @@ def fetch_review(
     plans_limit: int = PLANS_PAGE,
     timeframes: tuple[str, ...] = TIMEFRAMES,
 ) -> Review:
-    """Pull every public source for one vault; a source that fails is recorded, not fatal
-    (the detail endpoint excepted: without it there is nothing to review)."""
+    """Pull every public source for one vault server-side (needs egress Krystal accepts)."""
+    payloads: dict[str, object] = {}
+    for name, (url, params) in review_sources(
+        chain_id, address, plans_limit=plans_limit, timeframes=timeframes
+    ).items():
+        try:
+            payloads[name] = _source_get(url, params)
+        except (net.HttpError, KrystalError, ValueError) as e:
+            payloads[name] = {"__error": net.redact(str(e))}
+    return build_review(chain_id, address, payloads, timeframes=timeframes)
+
+
+def build_review(
+    chain_id: int,
+    address: str,
+    payloads: dict[str, object],
+    *,
+    timeframes: tuple[str, ...] = TIMEFRAMES,
+) -> Review:
+    """A Review from raw source payloads (`{"__error": text}` marks a source that failed).
+    A source that fails is recorded, not fatal — the detail endpoint excepted: without it
+    there is nothing to review."""
     address = address.lower()
     rv = Review(
         fetched_at=datetime.now(UTC).isoformat(timespec="seconds"),
         chain_id=chain_id,
         address=address,
-        url=f"https://defi.krystal.app/vaults/{chain_id}/{address}",
+        url=krystal_url(f"/vaults/{chain_id}/{address}"),
     )
-    q = {"chainId": chain_id, "vaultAddress": address}
 
-    rv.vault = fetch_vault(chain_id, address)
+    def source(name: str) -> dict | list:
+        raw = payloads.get(name)
+        if isinstance(raw, dict) and "__error" in raw:
+            raise KrystalError(str(raw["__error"]))
+        if raw is None:
+            raise KrystalError(f"{name}: not fetched")
+        return raw
+
+    detail = source("detail")
+    if not isinstance(detail, dict) or not detail.get("vaultAddress"):
+        raise KrystalError(f"vaults: no vault {address} on chain {chain_id}")
+    rv.vault = _parse_vault(detail, owned=False)
+    _attach_strategies(rv.vault, detail)
     rv.served["detail"] = "ok"
 
     try:
-        raw = _agent_get("vault-agent-settings", q)
+        raw = source("settings")
+        if not isinstance(raw, dict):
+            raise KrystalError("settings: unexpected payload")
         rv.raw["settings"] = raw
         rv.settings = parse_settings(raw)
         rv.served["settings"] = "ok"
-    except (net.HttpError, KrystalError, ValueError) as e:
+    except (KrystalError, ValueError) as e:
         rv.served["settings"] = net.redact(str(e))
         rv.missing.append("agent settings (goal, instructions, permissions, restrictions)")
 
     try:
-        raw = _agent_get(
-            "auto-farming-action-plans", {**q, "offset": 0, "limit": max(1, plans_limit)}
-        )
+        raw = source("plans")
+        if not isinstance(raw, dict):
+            raise KrystalError("plans: unexpected payload")
         rows = raw.get("data") or []
         rv.raw["plans"] = {
             "pagination": raw.get("pagination"),
@@ -402,25 +455,17 @@ def fetch_review(
         rv.served["plans"] = "ok"
         if total is not None and int(total) > len(rows):
             rv.missing.append(f"action plans beyond the newest {len(rows)} of {int(total)}")
-    except (net.HttpError, KrystalError, ValueError) as e:
+    except (KrystalError, ValueError) as e:
         rv.served["plans"] = net.redact(str(e))
         rv.missing.append("agent action-plan history")
 
     for tf in timeframes:
         try:
-            r = net.get(
-                f"{PERF_API}/{chain_id}/{address}",
-                params={"timeframe": tf},
-                headers=_HEADERS,
-                timeout=30,
-            )
-            if r.status_code != 200:
-                raise net.status_error(r, f"performance {tf}")
-            raw = r.json()
+            raw = source(f"perf_{tf}")
             rv.raw[f"perf_{tf}"] = raw
             rv.perf[tf] = parse_perf(tf, raw)
             rv.served[f"performance {tf}"] = "ok"
-        except (net.HttpError, KrystalError, ValueError) as e:
+        except (KrystalError, ValueError) as e:
             rv.served[f"performance {tf}"] = net.redact(str(e))
             rv.missing.append(f"performance series {tf}")
 

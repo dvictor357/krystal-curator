@@ -25,51 +25,29 @@ class KrystalError(RuntimeError):
     pass
 
 
-SOURCES = ("krystal", "rhpools")
+SOURCES = ("krystal",)
 
 
 def fetch_pools(
     chain_id: int,
     *,
     source: str = "krystal",
-    rhpools_url: str | None = None,
-    rhpools_top: int | None = None,
-    rhpools_windows: list[str] | None = None,
     limit: int = 5000,
     timeout: float = 30.0,
+    **_ignored: Any,
 ) -> list[Pool]:
     """Pools on `chain_id` from the configured feed.
 
-    `krystal`: the public LP-explorer feed (every chain Krystal lists).
-    `rhpools`: robinhoodpools' chain-indexed feed (Robinhood only, no σ / drawdown).
-    Both raise KrystalError so callers keep one except clause.
+    `krystal`: the public LP-explorer feed (every chain Krystal lists). A second,
+    chain-indexed feed was removed; `reconcile.py` stays for the day one returns.
     """
-    if source == "rhpools":
-        from . import rhpools
-
-        try:
-            return rhpools.fetch_pools(
-                chain_id,
-                base=rhpools_url or rhpools.DEFAULT_URL,
-                top=rhpools_top or rhpools.DEFAULT_TOP,
-                windows=rhpools_windows or None,
-                timeout=timeout,
-            )
-        except rhpools.RhpoolsError as e:
-            raise KrystalError(str(e)) from e
     if source != "krystal":
         raise KrystalError(f"unknown pool source {source!r}; use one of {', '.join(SOURCES)}")
     return fetch_krystal_pools(chain_id, limit=limit, timeout=timeout)
 
 
 def reference_source(chain_id: int, source: str) -> str | None:
-    """The other feed to reconcile against, or None when there is none for this chain."""
-    from .models import ROBINHOOD
-
-    if source == "rhpools":
-        return "krystal"
-    if source == "krystal" and chain_id == ROBINHOOD:
-        return "rhpools"
+    """The other feed to reconcile against; None until a second feed exists again."""
     return None
 
 

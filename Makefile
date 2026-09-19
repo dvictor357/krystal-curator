@@ -9,7 +9,11 @@ SYSTEMD := /etc/systemd/system/$(UNIT)
 PWD_ := $(shell pwd)
 
 .DEFAULT_GOAL := help
+WEB_HOST ?= 127.0.0.1
+WEB_PORT ?= 8100
+
 .PHONY: help install setup run scan watch status config backtest test lint fmt check \
+        web web-api web-migrate web-ui \
         docker-build docker-up docker-down docker-logs docker-status docker-shell \
         install-mac uninstall-mac logs-mac install-linux uninstall-linux logs-linux clean demo
 
@@ -53,6 +57,30 @@ fmt: ## ruff format + autofix
 	$(UV) run ruff format src tests && $(UV) run ruff check --fix src tests
 
 check: lint test ## lint + test
+
+# ---- web -------------------------------------------------------------------
+# Landing + /demo work without this. Login and /app need .env.web and Postgres.
+web-api: ## FastAPI/uvicorn for the web workspace (:8100)
+	@test -f .env.web || { \
+	  echo "missing .env.web (CURATOR_DATABASE_URL and CURATOR_API_SECRET)."; \
+	  echo "copy .env.web.example to .env.web, then: make web-api"; \
+	  exit 1; \
+	}
+	$(UV) run --env-file .env.web --extra web uvicorn krystal_curator.web_api:app \
+	  --host $(WEB_HOST) --port $(WEB_PORT) --reload --reload-dir src
+
+web: web-api ## alias for web-api
+
+web-migrate: ## apply Aerich migrations (Postgres from .env.web)
+	@test -f .env.web || { \
+	  echo "missing .env.web (CURATOR_DATABASE_URL)."; \
+	  echo "copy .env.web.example to .env.web, then: make web-migrate"; \
+	  exit 1; \
+	}
+	$(UV) run --env-file .env.web --extra web aerich upgrade
+
+web-ui: ## Next.js frontend (:3000); run make web-api in another terminal
+	npm run dev --prefix web
 
 # ---- docker ----------------------------------------------------------------
 docker-build: ## build the image

@@ -1,6 +1,6 @@
 """One door for outbound HTTP: retry with backoff, and error text that carries no secret.
 
-Every feed this tool talks to (Krystal, DexScreener, Telegram, rhpools) is a public
+Every feed this tool talks to (Krystal, DexScreener, Telegram) is a public
 service that hiccups: 429s, 5xxs, dropped connections, slow reads. A daemon that alerts
 on real capital must ride those out, not log a false "vaults: ConnectError" and skip a
 tick. And when it does give up, the text that reaches a log, a TUI toast or a Telegram

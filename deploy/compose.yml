@@ -1,0 +1,65 @@
+# Curator on one box: Postgres + API (private) + Next (bound to loopback for nginx).
+# Copy deploy/.env.example to deploy/.env first.
+name: curator
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: curator
+      POSTGRES_PASSWORD: ${CURATOR_DB_PASSWORD:?set CURATOR_DB_PASSWORD}
+      POSTGRES_DB: curator
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U curator -d curator"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CURATOR_DATABASE_URL: postgres://curator:${CURATOR_DB_PASSWORD}@db:5432/curator
+      CURATOR_API_SECRET: ${CURATOR_API_SECRET:?set CURATOR_API_SECRET}
+      CURATOR_COOKIE_SECURE: "true"
+      CURATOR_SERVER_FETCH: ${CURATOR_SERVER_FETCH:-false}
+      CURATOR_ALERTS: ${CURATOR_ALERTS:-true}
+      CURATOR_ALERT_INTERVAL: ${CURATOR_ALERT_INTERVAL:-300}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    # Loopback only: the host nginx fronts it for an external frontend (Vercel); the
+    # bearer secret is the only door. Unset CURATOR_API_PORT to keep it fully private.
+    ports:
+      - "127.0.0.1:${CURATOR_API_PORT:-8100}:8100"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/docs').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ../web
+      args:
+        CURATOR_ORIGIN: ${CURATOR_ORIGIN:?set CURATOR_ORIGIN}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      CURATOR_API_URL: http://api:8100
+      CURATOR_API_SECRET: ${CURATOR_API_SECRET}
+      CURATOR_ORIGIN: ${CURATOR_ORIGIN}
+      CURATOR_TRUST_PROXY: "true"
+      CURATOR_SOURCE_URL: ${CURATOR_SOURCE_URL:-https://github.com/dvictor357/krystal-curator}
+    ports:
+      - "127.0.0.1:${CURATOR_WEB_PORT:-3200}:3000"
+
+volumes:
+  pgdata:

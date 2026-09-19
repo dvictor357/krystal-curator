@@ -29,15 +29,8 @@ def _common(ap: argparse.ArgumentParser, cfg: Config) -> None:
         "--source",
         choices=api.SOURCES,
         default=cfg.pool_source,
-        help=f"pool feed: krystal (any chain) or rhpools (chain-indexed, Robinhood only) "
-        f"(default {cfg.pool_source})",
+        help=f"pool feed (default {cfg.pool_source})",
     )
-    ap.add_argument(
-        "--rhpools-url",
-        default=cfg.rhpools_url,
-        help=f"robinhoodpools base URL for --source rhpools (default {cfg.rhpools_url})",
-    )
-    ap.set_defaults(rhpools_top=cfg.rhpools_top, rhpools_windows=list(cfg.rhpools_windows))
     ap.add_argument(
         "--reconcile",
         action=argparse.BooleanOptionalAction,
@@ -242,12 +235,7 @@ def _recon_cell(r) -> str:
 
 def _pool_kwargs(args: argparse.Namespace) -> dict:
     """Feed selection for api.fetch_pools from the shared flags."""
-    return {
-        "source": args.source,
-        "rhpools_url": args.rhpools_url,
-        "rhpools_top": args.rhpools_top,
-        "rhpools_windows": args.rhpools_windows,
-    }
+    return {"source": args.source}
 
 
 def run_setup(args: argparse.Namespace) -> int:
@@ -893,7 +881,6 @@ def main(argv: list[str] | None = None) -> int:
         args.protocol = list(cfg.protocols)
     if hasattr(args, "source"):  # flags win over config for the TUI / daemon too
         cfg.pool_source = args.source
-        cfg.rhpools_url = args.rhpools_url
         cfg.reconcile = args.reconcile
     if args.cmd == "init":
         return run_init(args)

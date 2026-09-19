@@ -1,9 +1,10 @@
 .venv
 .git
-.env
+web
 exports
 reports
+demo
+docs
 tests
-.github
-*.md
-!README.md
+.env*
+*.sqlite
