@@ -33,7 +33,10 @@ services:
       CURATOR_ALERTS: ${CURATOR_ALERTS:-true}
       CURATOR_ALERT_INTERVAL: ${CURATOR_ALERT_INTERVAL:-300}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-    # No published port: only the web container reaches the API.
+    # Loopback only: the host nginx fronts it for an external frontend (Vercel); the
+    # bearer secret is the only door. Unset CURATOR_API_PORT to keep it fully private.
+    ports:
+      - "127.0.0.1:${CURATOR_API_PORT:-8100}:8100"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/docs').status==200 else 1)\""]
       interval: 15s
