@@ -1,6 +1,9 @@
 name: egress-probe
 on:
   workflow_dispatch:
+  push:
+    branches: [feat/curator-web]
+    paths: [".github/workflows/egress-probe.yml"]
 jobs:
   probe:
     runs-on: ubuntu-latest
