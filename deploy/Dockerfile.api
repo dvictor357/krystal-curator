@@ -1,0 +1,12 @@
+# Curator API: FastAPI + alert loop. Migrations run at start (aerich upgrade).
+FROM python:3.13-slim
+ENV PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+WORKDIR /app
+COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY src ./src
+COPY migrations ./migrations
+RUN uv sync --frozen --no-dev --extra web
+ENV PATH="/app/.venv/bin:$PATH"
+EXPOSE 8100
+CMD ["sh", "-c", "aerich upgrade && uvicorn krystal_curator.web_api:app --host 0.0.0.0 --port 8100 --proxy-headers"]

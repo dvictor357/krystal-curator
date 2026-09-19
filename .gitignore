@@ -22,3 +22,6 @@ web/tsconfig.tsbuildinfo
 web/test-results/
 web/playwright-report/
 .env.web
+
+# deploy
+deploy/.env
