@@ -65,6 +65,7 @@ async def current_user(request: Request) -> User:
     )
     if not session:
         raise HTTPException(401, "Session expired. Please sign in again.")
+    request.state.user = session.user  # usage metering reads it after the response
     return session.user
 
 
@@ -146,6 +147,7 @@ async def login(body: Credentials, request: Request, response: Response):
     if not user or not valid:
         raise HTTPException(401, "Email or password is incorrect.")
     await rotate_session(request, response, user)
+    request.state.user = user
     return {"email": user.email}
 
 
@@ -197,6 +199,7 @@ async def siwe(body: SignedMessage, request: Request, response: Response):
             # A wallet that signs in is the obvious wallet to monitor.
             await Preferences.get_or_create(user=user, defaults={"wallet": message.address})
     await rotate_session(request, response, user)
+    request.state.user = user
     return {"address": user.address}
 
 
@@ -220,9 +223,12 @@ async def account(user: Annotated[User, Depends(current_user)]):
         .order_by("-created_at")
         .values_list("pool_id", flat=True)
     )
+    from .web_usage import is_admin
+
     return {
         "email": user.email,
         "address": user.address,
+        "admin": is_admin(user),
         "settings": preferences[0] if preferences else None,
         "watchlist": list(watched),
     }

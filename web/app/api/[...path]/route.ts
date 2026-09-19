@@ -10,6 +10,7 @@ const allowed = new Map([
   ["market/positions", ["GET"]],
   ["market/rotations", ["GET"]],
   ["market/track-record", ["GET"]],
+  ["market/usage", ["GET"]],
   ["market/feed/pools", ["POST"]],
   ["market/feed/positions", ["POST"]],
   ["market/feed/leaderboard", ["POST"]],

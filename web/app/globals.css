@@ -3573,3 +3573,74 @@ td > .address-chip.tiny {
 .size-presets > span {
   margin-left: 6px;
 }
+
+/* Admin usage panel */
+.usage-panel {
+  margin-top: 30px;
+  max-width: 980px;
+}
+.usage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.usage-head .eyebrow {
+  color: var(--amber);
+}
+.usage-range button {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 3px 8px;
+  margin-left: 4px;
+}
+.usage-range button.on {
+  color: var(--amber);
+  border-color: #5a4218;
+}
+.usage-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 64px;
+  margin: 8px 0 18px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  background: #0e100c;
+}
+.usage-bar {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.usage-bar span {
+  width: 100%;
+  background: var(--amber);
+  opacity: 0.75;
+}
+.usage-tables {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 14px;
+  align-items: start;
+}
+.usage-tables table {
+  font-size: 10px;
+  border: 1px solid var(--line);
+}
+.usage-tables th {
+  padding: 8px 10px;
+  font-size: 8px;
+}
+.usage-tables td {
+  padding: 7px 10px;
+}
+@media (max-width: 720px) {
+  .usage-tables {
+    grid-template-columns: 1fr;
+  }
+}

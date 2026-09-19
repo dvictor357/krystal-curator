@@ -147,6 +147,22 @@ class Job(models.Model):
         table = "curator_jobs"
 
 
+class Usage(models.Model):
+    """Per user, per day, per route request counters: who uses what, how much, how slowly."""
+
+    id = fields.IntField(primary_key=True)
+    user = fields.ForeignKeyField("models.User", related_name="usage", on_delete=fields.CASCADE)
+    day = fields.DateField()
+    route = fields.CharField(max_length=60)  # "GET /pools", "POST /feed/positions", …
+    count = fields.IntField(default=0)
+    errors = fields.IntField(default=0)
+    ms_total = fields.FloatField(default=0)
+
+    class Meta:
+        table = "curator_usage"
+        unique_together = (("user", "day", "route"),)
+
+
 class RateLimit(models.Model):
     key = fields.CharField(max_length=80, primary_key=True)
     window = fields.BigIntField()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import time
 from contextlib import asynccontextmanager
@@ -15,7 +16,16 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 from tortoise.contrib.fastapi import RegisterTortoise
 
-from . import api, leaderboard, vaults, web_alerts, web_feed, web_rotation, web_verdicts
+from . import (
+    api,
+    leaderboard,
+    vaults,
+    web_alerts,
+    web_feed,
+    web_rotation,
+    web_usage,
+    web_verdicts,
+)
 from .models import CHAIN_SLUG, Pool, default_quote
 from .position import simulate
 from .profiles import PROFILES
@@ -24,21 +34,28 @@ from .web_auth import authorize, market_user, router
 from .web_cache import Cache, Meta
 from .web_db import TORTOISE_ORM, User
 
+log = logging.getLogger(__name__)
 store = Cache()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with RegisterTortoise(app, config=TORTOISE_ORM):
-        task = asyncio.create_task(web_alerts.loop(store))
+        tasks = [asyncio.create_task(web_alerts.loop(store)), asyncio.create_task(web_usage.loop())]
         try:
             yield
         finally:
-            task.cancel()
+            for t in tasks:
+                t.cancel()
+            try:
+                await web_usage.flush()
+            except Exception:
+                log.warning("usage: final flush failed", exc_info=True)
 
 
 app = FastAPI(title="Curator analytics", dependencies=[Depends(authorize)], lifespan=lifespan)
 app.include_router(router)
+app.middleware("http")(web_usage.middleware)
 
 
 Fresh = Annotated[bool, Query(description="Bypass the cache once (manual refresh)")]
@@ -354,6 +371,16 @@ async def rotations(
     await web_verdicts.record_samples(rows)
     await web_verdicts.attach_history(user, rows)
     return with_refresh({"rows": rows, "fetchedAt": fetched_at}, *refresh)
+
+
+@app.get("/usage")
+async def usage(
+    user: Annotated[User, Depends(market_user)],
+    days: Annotated[int, Query(ge=1, le=90)] = 30,
+):
+    """Admin only: who uses what, per day and per route, plus the top accounts."""
+    web_usage.require_admin(user)
+    return await web_usage.report(days)
 
 
 @app.get("/track-record")

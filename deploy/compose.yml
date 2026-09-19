@@ -33,6 +33,7 @@ services:
       CURATOR_ALERTS: ${CURATOR_ALERTS:-true}
       CURATOR_ALERT_INTERVAL: ${CURATOR_ALERT_INTERVAL:-300}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      CURATOR_ADMIN_ADDRESSES: ${CURATOR_ADMIN_ADDRESSES:-}
     # Loopback only: the host nginx fronts it for an external frontend (Vercel); the
     # bearer secret is the only door. Unset CURATOR_API_PORT to keep it fully private.
     ports:

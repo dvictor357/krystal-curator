@@ -31,6 +31,7 @@ import { StatusBar } from "@/components/statusbar";
 import { Pager } from "@/components/pager";
 import { AmbientField } from "@/components/ambient";
 import { TrackRecord } from "@/components/track-record";
+import { UsagePanel } from "@/components/usage";
 import { PaletteProvider } from "@/components/palette";
 import { AddressChip, TokenLink } from "@/components/address";
 import { usePalette } from "@/components/palette";
@@ -58,6 +59,7 @@ export function Workspace({
   const [ready, setReady] = useState(demo);
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const [admin, setAdmin] = useState(false);
   const [settings, setSettings] = useState<Settings>(defaults);
   const [watched, setWatched] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -102,6 +104,7 @@ export function Workspace({
         if (!cancelled) {
           setEmail(account.email ?? shortAddress(account.address));
           setAddress(account.address ?? "");
+          setAdmin(Boolean(account.admin));
           setSettings(account.settings || defaults);
           setWatched(account.watchlist);
           setReady(true);
@@ -721,11 +724,14 @@ export function Workspace({
                   </>
                 )}
                 {active === "settings" && (
-                  <SettingsForm
-                    settings={settings}
-                    demo={demo}
-                    onSave={setSettings}
-                  />
+                  <>
+                    <SettingsForm
+                      settings={settings}
+                      demo={demo}
+                      onSave={setSettings}
+                    />
+                    {admin && <UsagePanel />}
+                  </>
                 )}
                 {["positions", "leaderboard"].includes(active) && (
                   <ResearchPanel
