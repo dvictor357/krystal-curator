@@ -8,6 +8,8 @@ const explorers: Record<number, { name: string; base: string }> = {
   2020: { name: "Ronin explorer", base: "https://app.roninchain.com" },
   4663: { name: "Robinscan", base: "https://robinscan.io" },
   8453: { name: "Basescan", base: "https://basescan.org" },
+  42161: { name: "Arbiscan", base: "https://arbiscan.io" },
+  43114: { name: "Snowtrace", base: "https://snowtrace.io" },
 };
 const dexChain: Record<number, string> = {
   1: "ethereum",
@@ -18,6 +20,8 @@ const dexChain: Record<number, string> = {
   2020: "ronin",
   4663: "robinhood",
   8453: "base",
+  42161: "arbitrum",
+  43114: "avalanche",
 };
 
 export type Action = {

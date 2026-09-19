@@ -21,6 +21,24 @@ CHAIN_SLUG: dict[int, str] = {
 }
 
 ROBINHOOD = 4663
+# The stable-or-native token most pools on a chain are quoted in (Krystal feed, top 200).
+DEFAULT_QUOTE: dict[int, str] = {
+    1: "WETH",
+    10: "USDC",
+    56: "USDT",
+    137: "USDC",
+    999: "WHYPE",
+    4663: "USDG",
+    8453: "USDC",
+    42161: "USDC",
+    43114: "USDC",
+}
+
+
+def default_quote(chain_id: int) -> str:
+    return DEFAULT_QUOTE.get(chain_id, "USDC")
+
+
 KRYSTAL_REF = "35STGKW0"  # referral code carried on every defi.krystal.app link we hand out
 
 

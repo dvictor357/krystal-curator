@@ -256,3 +256,13 @@ def test_cache_one_upstream_call_per_key_under_concurrency():
         w.join(3)
     assert len(calls) == 1
     assert sorted(results) == ["hit"] * 4 + ["miss"]
+
+
+def test_quote_resolution_per_chain():
+    from krystal_curator import web_api
+
+    assert web_api.quote_for(4663, "") == "USDG"
+    assert web_api.quote_for(8453, "") == "USDC"
+    assert web_api.quote_for(1, "") == "WETH"
+    assert web_api.quote_for(4663, "any") is None
+    assert web_api.quote_for(42161, "USD₮0") == "USD₮0"

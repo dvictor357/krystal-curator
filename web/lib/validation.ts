@@ -4,6 +4,7 @@ export const profiles = [
   "aggressive",
   "degen",
 ] as const;
+/** Chains the Krystal feed serves pools for (Ronin returns none). */
 export const chains = {
   4663: "Robinhood",
   1: "Ethereum",
@@ -13,9 +14,27 @@ export const chains = {
   56: "BNB Chain",
   137: "Polygon",
   999: "HyperEVM",
-  2020: "Ronin",
   43114: "Avalanche",
 } as const;
+/** Quote chips per chain, most common first (Krystal top-200 by TVL); "" = any. */
+export const quotesFor = (chain: number): [string, string][] => {
+  const q: Record<number, string[]> = {
+    4663: ["USDG", "USDC", "USDT", "WETH"],
+    1: ["WETH", "USDC", "USDT"],
+    8453: ["USDC", "WETH", "CBBTC"],
+    42161: ["USDC", "WETH", "USD₮0", "ARB"],
+    10: ["USDC", "WETH", "USDT"],
+    56: ["USDT", "WBNB", "ETH"],
+    137: ["USDC", "USDT0", "WETH", "WPOL"],
+    999: ["WHYPE", "USD₮0", "USDC"],
+    43114: ["USDC", "WAVAX", "USDT"],
+  };
+  return [
+    ...(q[chain] ?? ["USDC", "WETH"]).map((s) => [s, s] as [string, string]),
+    ["", "Any"],
+  ];
+};
+export const defaultQuote = (chain: number) => quotesFor(chain)[0][0];
 export function validSettings(value: Record<string, unknown>) {
   return (
     profiles.includes(value.profile as (typeof profiles)[number]) &&

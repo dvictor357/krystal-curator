@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from tortoise.contrib.fastapi import RegisterTortoise
 
 from . import api, leaderboard, vaults, web_alerts, web_rotation, web_verdicts
-from .models import CHAIN_SLUG, Pool
+from .models import CHAIN_SLUG, Pool, default_quote
 from .position import simulate
 from .profiles import PROFILES
 from .scoring import curate
@@ -39,6 +39,13 @@ app.include_router(router)
 
 
 Fresh = Annotated[bool, Query(description="Bypass the cache once (manual refresh)")]
+
+
+def quote_for(chain: int, quote: str) -> str | None:
+    """'' → the chain's usual quote token; 'any' → no quote filter."""
+    if quote.lower() == "any":
+        return None
+    return quote or default_quote(chain)
 
 
 def chain_check(chain: int, source: str = "krystal"):
@@ -114,7 +121,7 @@ def pools(
     chain: int = 4663,
     source: Literal["krystal"] = "krystal",
     profile: Literal["conservative", "balanced", "aggressive", "degen"] = "balanced",
-    quote: Annotated[str, Query(max_length=20, pattern=r"^[A-Za-z0-9]*$")] = "USDG",
+    quote: Annotated[str, Query(max_length=20, pattern=r"^[^\s&=?/#]*$")] = "",
     size: Annotated[float, Query(ge=1, le=100_000_000, allow_inf_nan=False)] = 10000,
     fresh: Fresh = False,
     response: Response = None,
@@ -125,7 +132,7 @@ def pools(
     )
     meta.apply(response, 60)
     return {
-        "rows": pool_rows(entry.value, profile, quote, size),
+        "rows": pool_rows(entry.value, profile, quote_for(chain, quote) or "", size),
         "fetchedAt": entry.at,
         "source": source,
         "demo": False,
@@ -159,7 +166,7 @@ async def rotations(
     chain: int = 4663,
     source: Literal["krystal"] = "krystal",
     profile: Literal["conservative", "balanced", "aggressive", "degen"] = "balanced",
-    quote: Annotated[str, Query(max_length=20, pattern=r"^[A-Za-z0-9]*$")] = "USDG",
+    quote: Annotated[str, Query(max_length=20, pattern=r"^[^\s&=?/#]*$")] = "",
     fresh: Fresh = False,
     response: Response = None,
 ):
@@ -181,7 +188,10 @@ async def rotations(
         if pools_meta.cache == "miss":
             meta = Meta(meta.cache, meta.age, meta.upstream_ms + pools_meta.upstream_ms)
         rows = web_rotation.rotation_rows(
-            positions_entry.value, pools_entry.value, PROFILES[profile], quote=quote or None
+            positions_entry.value,
+            pools_entry.value,
+            PROFILES[profile],
+            quote=quote_for(chain, quote),
         )
         return finite(rows), meta, min(positions_entry.at, pools_entry.at)
 

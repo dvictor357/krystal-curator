@@ -36,7 +36,7 @@ import { usePalette } from "@/components/palette";
 import { usePagination } from "@/lib/paging";
 import { shortAddress } from "@/lib/siwe";
 import { protocolLabel } from "@/lib/pair";
-import { chains, profiles } from "@/lib/validation";
+import { chains, profiles, defaultQuote, quotesFor } from "@/lib/validation";
 import { defaults, money, pct, type Pool, type Settings } from "@/lib/types";
 import snapshot from "@/lib/demo.json";
 const tabs = [
@@ -62,7 +62,11 @@ export function Workspace({
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [protocol, setProtocol] = useState("all");
-  const [quote, setQuote] = useState("USDG");
+  const [quote, setQuote] = useState(defaultQuote(defaults.chain));
+  // A new network gets its own quote token; the old one usually does not exist there.
+  useEffect(() => {
+    setQuote(defaultQuote(settings.chain));
+  }, [settings.chain]);
   const [sort, setSort] = useState("score");
   const [accountError, setAccountError] = useState("");
   const [notice, setNotice] = useState("");
@@ -116,7 +120,7 @@ export function Workspace({
           source: settings.source,
           profile: settings.profile,
           size: String(settings.size),
-          quote,
+          quote: quote || "any",
         })}`
       : null;
   const pools = useResource<{ rows: Pool[]; fetchedAt: number }>(poolsPath, {
@@ -461,18 +465,12 @@ export function Workspace({
                       aria-label="Quote token"
                     >
                       <span>Quoted in</span>
-                      {[
-                        ["USDG", "USDG"],
-                        ["USDC", "USDC"],
-                        ["USDT", "USDT"],
-                        ["WETH", "WETH"],
-                        ["", "Any"],
-                      ].map(([value, label]) => (
+                      {quotesFor(settings.chain).map(([value, label]) => (
                         <button
                           key={label}
                           type="button"
                           className={quote === value ? "chip active" : "chip"}
-                          disabled={demo && value !== "USDG"}
+                          disabled={demo && value !== defaultQuote(4663)}
                           aria-pressed={quote === value}
                           onClick={() => setQuote(value)}
                         >
@@ -1709,6 +1707,7 @@ function ResearchPanel({
           wallet: settings.wallet,
           source: settings.source,
           profile: settings.profile,
+          quote: defaultQuote(settings.chain),
         })}`
       : null,
     { ttl: 60, interval: 60 },

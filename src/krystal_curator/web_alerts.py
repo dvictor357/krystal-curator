@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from starlette.concurrency import run_in_threadpool
 
 from . import api, notify, vaults, web_rotation
-from .models import Pool
+from .models import Pool, default_quote
 from .monitor import Alert, Monitor
 from .profiles import PROFILES
 from .vaults import Vault
@@ -56,7 +56,9 @@ def evaluate(
     live = {p.id for p in monitor.open_positions()}
     state = {k: v for k, v in monitor.pos_state.items() if k in live}  # closed ones drop out
     first = not previous
-    for row in web_rotation.rotation_rows(user_vaults, pools, profile, quote="USDG"):
+    for row in web_rotation.rotation_rows(
+        user_vaults, pools, profile, quote=default_quote(prefs.chain)
+    ):
         prev = previous.get(row["id"], {})
         best = row["best"] or {}
         if not first and row["kind"] == "rotate" and prev.get("kind") != "rotate":
