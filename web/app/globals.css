@@ -2102,7 +2102,8 @@ dd {
 .position-meta {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   font-family: var(--mono);
   font-size: 9px;
   color: var(--muted);
@@ -2111,6 +2112,7 @@ dd {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
   padding: 2px 7px;
   border: 1px solid;
   letter-spacing: 0.04em;
