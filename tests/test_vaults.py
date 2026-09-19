@@ -60,7 +60,7 @@ def test_parse_vault_and_track_record():
     )
     assert v.address == "0xab" and v.owned and abs(v.age_days - 9) < 1e-9
     assert abs(v.apr - 354.0) < 1e-9  # feed fraction → percent
-    assert v.url.endswith("/vaults/4663/0xab")
+    assert v.url.startswith("https://defi.krystal.app/vaults/4663/0xab?r=")
     assert v.win_rate is None
     win = parse_strategy({**STRATEGY, "status": "CLOSED", "pnl": 10}, v.name)
     loss = parse_strategy({**STRATEGY, "status": "CLOSED", "pnl": -4}, v.name)
