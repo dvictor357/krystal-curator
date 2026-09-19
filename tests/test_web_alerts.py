@@ -81,7 +81,8 @@ def test_message_is_html_safe():
 
 
 @pytest.fixture
-async def db():
+async def db(monkeypatch):
+    monkeypatch.setenv("CURATOR_RPC_4663", "")  # no chain calls from tests
     await Tortoise.init(db_url="sqlite://:memory:", modules={"models": ["krystal_curator.web_db"]})
     await Tortoise.generate_schemas()
     yield

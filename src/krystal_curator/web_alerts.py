@@ -8,6 +8,7 @@ and the `watch` daemon) plus a rotation-verdict rule on top of `web_rotation`.
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import os
 import time
@@ -15,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 
 from starlette.concurrency import run_in_threadpool
 
-from . import api, notify, vaults, web_feed, web_rotation, web_verdicts
+from . import api, chain_rpc, notify, vaults, web_feed, web_rotation, web_verdicts
 from .models import Pool, default_quote
 from .monitor import Alert, Monitor
 from .profiles import PROFILES
@@ -156,11 +157,22 @@ async def tick(cache: Cache) -> int:
         if loaded is None:
             continue
         positions_entry, pools_entry = loaded
+        # Range and edge rules run on the live chain price, not the feed's last snapshot.
+        user_vaults = [copy.deepcopy(v) for v in positions_entry.value]
+        try:
+            await run_in_threadpool(
+                chain_rpc.refresh_prices,
+                prefs.chain,
+                [p for v in user_vaults for p in v.positions],
+                pools_entry.value,
+            )
+        except Exception as e:  # noqa: BLE001 — RPC trouble degrades to feed prices
+            log.warning("alerts: rpc price refresh failed for %s: %s", prefs.chain, e)
         previous = {s.position_id: s.state async for s in AlertState.filter(user_id=prefs.user_id)}
-        alerts, state = evaluate(prefs, positions_entry.value, pools_entry.value, previous)
+        alerts, state = evaluate(prefs, user_vaults, pools_entry.value, previous)
         # Keep the verdict log and pool samples moving for this user even between page views.
         rows = web_rotation.rotation_rows(
-            positions_entry.value,
+            user_vaults,
             pools_entry.value,
             PROFILES.get(prefs.profile, PROFILES["balanced"]),
             quote=default_quote(prefs.chain),
