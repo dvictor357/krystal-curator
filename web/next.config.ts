@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
-  output: "standalone",
+  // Standalone for the Docker image; Vercel builds its own output.
+  output: process.env.VERCEL ? undefined : "standalone",
   poweredByHeader: false,
   async headers() {
     return [
