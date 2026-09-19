@@ -1,0 +1,14 @@
+name: egress-probe
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Can this runner reach the data feeds?
+        run: |
+          for u in "https://api.krystal.app/all/v2/lp_explorer/top_pools?chainId=4663&limit=1" \
+                   "https://api.krystal.app/all/v1/vaults?chainIds=4663&isAutoFarmVault=true&limit=1" \
+                   "https://api.dexscreener.com/tokens/v1/robinhood/0x5fc5360d0400a0fd4f2af552add042d716f1d168"; do
+            printf '%s -> ' "$u"; curl -s -o /dev/null -w '%{http_code}\n' --max-time 20 "$u"
+          done
