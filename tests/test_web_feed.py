@@ -90,8 +90,8 @@ async def client(monkeypatch):
 
 async def test_get_asks_for_feed_then_serves_it(client):
     r = await client.get("/pools?chain=4663")
-    assert r.status_code == 409
-    recipe = r.json()["detail"]["needFeed"][0]
+    assert r.status_code == 200 and "rows" not in r.json()
+    recipe = r.json()["needFeed"][0]
     assert recipe["kind"] == "pools"
     r = await client.post(
         "/feed/pools",
@@ -107,11 +107,10 @@ async def test_get_asks_for_feed_then_serves_it(client):
     assert r.status_code == 200 and r.headers["x-cache"] == "hit" and len(r.json()["rows"]) > 5
     assert "refreshFeed" not in r.json()
     # Manual refresh in browser-fed mode is a new handshake.
-    assert (await client.get("/pools?chain=4663&fresh=true")).status_code == 409
+    assert "needFeed" in (await client.get("/pools?chain=4663&fresh=true")).json()
     # Rotations needs both datasets: it asks for the missing one only.
     r = await client.get(f"/rotations?chain=4663&wallet={WALLET}")
-    assert r.status_code == 409
-    assert [x["kind"] for x in r.json()["detail"]["needFeed"]] == ["positions"]
+    assert [x["kind"] for x in r.json()["needFeed"]] == ["positions"]
     r = await client.post(
         "/feed/positions",
         json={"chain": 4663, "round": 1, "wallet": WALLET, "payloads": {}},

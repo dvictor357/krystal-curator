@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { recordSample, setDataAt, setOnline } from "@/lib/telemetry";
+import { runRecipes, type Recipe } from "@/lib/feed";
 
 interface Entry<T> {
   data: T;
@@ -58,8 +59,15 @@ export function clearResources() {
   }
 }
 
+const refreshing = new Set<string>();
+const listeners = new Map<string, Set<(e: Entry<unknown>) => void>>();
+
 /** Bridge GET with timing and cache headers recorded for the status bar. */
-async function load<T>(path: string, fresh: boolean): Promise<Entry<T>> {
+async function load<T>(
+  path: string,
+  fresh: boolean,
+  fed = false,
+): Promise<Entry<T>> {
   const url = fresh
     ? `${path}${path.includes("?") ? "&" : "?"}fresh=true`
     : path;
@@ -96,11 +104,34 @@ async function load<T>(path: string, fresh: boolean): Promise<Entry<T>> {
     error: response.ok ? undefined : body.error,
   });
   setOnline(true);
+  if (response.ok && Array.isArray(body.needFeed) && !fed) {
+    // Browser-fed deployment: fetch what the server asks for, post it, ask again.
+    await runRecipes(body.needFeed as Recipe[]);
+    return load<T>(path, false, true);
+  }
   if (!response.ok) {
     if (response.status === 401) window.location.assign("/login");
     throw new Error(body.error || "Request failed. Please try again.");
   }
-  return { data: body as T, at: Date.now(), fetchedAt: body.fetchedAt ?? null };
+  const entry: Entry<T> = {
+    data: body as T,
+    at: Date.now(),
+    fetchedAt: body.fetchedAt ?? null,
+  };
+  const stale = (body as { refreshFeed?: Recipe[] }).refreshFeed;
+  if (stale && !fed && !refreshing.has(path)) {
+    // Stale answer served at once; refresh the feed in the background, then swap.
+    refreshing.add(path);
+    runRecipes(stale)
+      .then(() => load<T>(path, false, true))
+      .then((next) => {
+        write(path, next);
+        listeners.get(path)?.forEach((l) => l(next));
+      })
+      .catch(() => undefined)
+      .finally(() => refreshing.delete(path));
+  }
+  return entry;
 }
 
 function fetchShared<T>(key: string, path: string, fresh: boolean) {
@@ -116,6 +147,11 @@ function fetchShared<T>(key: string, path: string, fresh: boolean) {
     });
   inflight.set(key, promise);
   return promise;
+}
+
+/** One-off bridge GET that honours the browser-fed handshake (no caching, no hook). */
+export async function fetchFed<T>(path: string): Promise<T> {
+  return (await load<T>(path, false)).data;
 }
 
 /**
@@ -190,6 +226,17 @@ export function useResource<T extends { fetchedAt?: number | null }>(
   useEffect(() => {
     if (key) setDataAt(entry?.fetchedAt ?? null, interval || null);
   }, [key, entry, interval]);
+  // A background feed refresh replaced the stale copy: show it.
+  useEffect(() => {
+    if (!key) return;
+    const set = listeners.get(key) ?? new Set();
+    const l = (e: Entry<unknown>) => setEntry(e as Entry<T>);
+    set.add(l);
+    listeners.set(key, set);
+    return () => {
+      set.delete(l);
+    };
+  }, [key]);
 
   return {
     data: entry?.data ?? null,

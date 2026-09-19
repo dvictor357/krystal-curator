@@ -25,7 +25,7 @@ import {
 import { Brand } from "./brand";
 import { PairMark } from "./pair";
 import { request } from "@/lib/api";
-import { clearResources, useResource } from "@/lib/resource";
+import { clearResources, fetchFed, useResource } from "@/lib/resource";
 import { clearSignedInHint } from "@/lib/session";
 import { StatusBar } from "@/components/statusbar";
 import { Pager } from "@/components/pager";
@@ -1856,7 +1856,7 @@ function ResearchPanel({
     setReview(null);
     setReviewError("");
     try {
-      const data = await request(
+      const data = await fetchFed<{ evaluation: Evaluation }>(
         `/api/market/review?chain=${v.chain_id}&address=${encodeURIComponent(v.address)}`,
       );
       if (id === generation.current) setReview(data.evaluation);

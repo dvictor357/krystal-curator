@@ -10,6 +10,7 @@ from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 from tortoise.contrib.fastapi import RegisterTortoise
@@ -118,11 +119,21 @@ def pool_rows(pools: list[Pool], profile: str, quote: str, size: float):
     return finite(rows)
 
 
-class NeedFeed(HTTPException):
-    """Browser-fed mode: nothing usable cached — here is what to fetch and post back."""
+class NeedFeed(Exception):
+    """Browser-fed mode: nothing usable cached — here is what to fetch and post back.
+
+    Answered as 200 `{"needFeed": [...]}` (a handshake, not an error: browsers log every
+    4xx to the console, and this happens on every first load).
+    """
 
     def __init__(self, recipes: list[dict]):
-        super().__init__(409, {"needFeed": recipes})
+        super().__init__("need feed")
+        self.recipes = recipes
+
+
+@app.exception_handler(NeedFeed)
+async def _need_feed(request: Request, exc: NeedFeed):
+    return JSONResponse({"needFeed": exc.recipes}, headers={"Cache-Control": "no-store"})
 
 
 def scoped(key: tuple, user: User) -> tuple:
@@ -307,7 +318,7 @@ async def rotations(
                 fresh=fresh,
             )
         except NeedFeed as e:
-            needed += e.detail["needFeed"]
+            needed += e.recipes
         try:
             pools_entry, pools_meta, refresh_q = serve(
                 ("pools", chain, source),
@@ -319,7 +330,7 @@ async def rotations(
                 fresh=fresh,
             )
         except NeedFeed as e:
-            needed += e.detail["needFeed"]
+            needed += e.recipes
         if needed:
             raise NeedFeed(needed)
         if pools_meta.cache == "miss":

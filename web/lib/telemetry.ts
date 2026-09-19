@@ -56,7 +56,5 @@ export function useTelemetry() {
 }
 /** Which upstream the bridge path fans out to; shown next to the upstream latency. */
 export function upstreamName(path: string) {
-  if (path.includes("/market/pools")) return "Krystal";
-  if (path.includes("/market/")) return "Krystal";
-  return "Backend";
+  return path.startsWith("krystal:") ? "Krystal" : "Backend";
 }

@@ -10,6 +10,10 @@ const allowed = new Map([
   ["market/positions", ["GET"]],
   ["market/rotations", ["GET"]],
   ["market/track-record", ["GET"]],
+  ["market/feed/pools", ["POST"]],
+  ["market/feed/positions", ["POST"]],
+  ["market/feed/leaderboard", ["POST"]],
+  ["market/feed/review", ["POST"]],
   ["market/leaderboard", ["GET"]],
   ["market/review", ["GET"]],
 ]);
@@ -37,7 +41,9 @@ async function bridge(
     );
   try {
     const body = req.method === "GET" ? undefined : await req.text();
-    if (body && body.length > 4096)
+    // Browser-fed Krystal payloads are large; everything else stays tiny.
+    const limit = path.startsWith("market/feed/") ? 8 * 1024 * 1024 : 4096;
+    if (body && body.length > limit)
       return NextResponse.json(
         { error: "Request too large." },
         { status: 413 },
