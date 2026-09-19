@@ -46,8 +46,10 @@ export default function Privacy() {
         Private keys or seed phrases (never asked for), transaction signatures
         beyond the one-time sign-in message (verified, then discarded), IP
         addresses in the database (only a hashed, short-lived rate-limit key),
-        page-view analytics, advertising identifiers, or third-party tracking
-        cookies. There are no ads and no trackers.
+        advertising identifiers, or third-party tracking cookies. There are no
+        ads. Page views are counted with Vercel Web Analytics: cookieless,
+        aggregate (pages, referrers, countries, devices), never tied to an
+        account or wallet.
       </p>
       <h2>Where data goes</h2>
       <ul>
