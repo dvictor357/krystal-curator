@@ -121,6 +121,7 @@ async def test_tick_sends_once_per_change_and_stores_state(db, monkeypatch):
             return True
 
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("CURATOR_SERVER_FETCH", "true")
     monkeypatch.setattr(web_alerts.notify, "Telegram", Bot)
     cache = Cache()
     assert await web_alerts.tick(cache) == 0  # first sight, in range: quiet
@@ -136,3 +137,37 @@ async def test_tick_sends_once_per_change_and_stores_state(db, monkeypatch):
     cache.entries.clear()
     await web_alerts.tick(cache)
     assert await AlertState.filter(user=user).count() == 0
+
+
+async def test_tick_uses_the_users_own_browser_fed_entries(db, monkeypatch):
+    user = await User.create(address="0x" + "e" * 40)
+    await Preferences.create(
+        user=user, profile="degen", wallet="0x" + "f" * 40, telegram_chat_id="7"
+    )
+    sent = []
+
+    class Bot:
+        def __init__(self, token, chat_id):
+            self.chat_id = chat_id
+
+        def send(self, text, html=False, **kw):
+            sent.append(text)
+            return True
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.delenv("CURATOR_SERVER_FETCH", raising=False)
+    monkeypatch.setattr(web_alerts.notify, "Telegram", Bot)
+    monkeypatch.setattr(
+        web_alerts.vaults, "fetch_vaults", lambda *a, **k: pytest.fail("server must not fetch")
+    )
+    cache = Cache()
+    assert await web_alerts.tick(cache) == 0  # nothing posted yet: skipped, no crash
+    cur = pool("0xcur", "ETH", 10_000_000, 5_000, vol=2)
+    scope = str(user.id)
+    cache.put(("positions", 4663, "0x" + "f" * 40, scope), [vault(position())])
+    cache.put(("pools", 4663, "krystal", scope), [cur])
+    assert await web_alerts.tick(cache) == 0
+    cache.put(
+        ("positions", 4663, "0x" + "f" * 40, scope), [vault(position(status="OUT_RANGE", price=3))]
+    )
+    assert await web_alerts.tick(cache) == 1 and "OUT OF RANGE" in sent[0]

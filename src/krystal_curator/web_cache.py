@@ -61,6 +61,21 @@ class Cache:
             with self.guard:
                 self.refreshing.discard(key)
 
+    def peek(self, key: tuple) -> Entry | None:
+        """The cached entry, whatever its age; None if never loaded."""
+        with self.guard:
+            return self.entries.get(key)
+
+    def put(self, key: tuple, value: object, upstream_ms: float = 0.0) -> Entry:
+        """Store a value produced elsewhere (a browser-fed payload) as if just fetched."""
+        entry = Entry(time.time(), value, upstream_ms)
+        with self.guard:
+            self.entries[key] = entry
+            self.entries.move_to_end(key)
+            while len(self.entries) > self.capacity:
+                self.entries.popitem(last=False)
+        return entry
+
     def get(self, key: tuple, fetch, ttl: int = 90, stale: int = 600, fresh: bool = False):
         with self.guard:
             entry = self.entries.get(key)

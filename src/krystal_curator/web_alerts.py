@@ -10,11 +10,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from datetime import UTC, datetime, timedelta
 
 from starlette.concurrency import run_in_threadpool
 
-from . import api, notify, vaults, web_rotation, web_verdicts
+from . import api, notify, vaults, web_feed, web_rotation, web_verdicts
 from .models import Pool, default_quote
 from .monitor import Alert, Monitor
 from .profiles import PROFILES
@@ -103,6 +104,41 @@ async def claim(name: str, seconds: int) -> bool:
     return updated == 1
 
 
+POSITIONS_MAX_AGE = 24 * 3600  # browser-fed positions: ranges are static, so a day is fine
+POOLS_MAX_AGE = 30 * 60  # browser-fed pool metrics: older than this and verdicts are noise
+
+
+def load_feeds(cache: Cache, prefs: Preferences):
+    """(positions_entry, pools_entry) for one user, or None when nothing usable is there.
+
+    Server-fetch deployments load from Krystal; browser-fed ones can only use what this
+    user's browser posted (per-user keys), within an age that still makes sense.
+    """
+    pkey = ("positions", prefs.chain, prefs.wallet.lower())
+    qkey = ("pools", prefs.chain, prefs.source)
+    if web_feed.server_fetch_enabled():
+        try:
+            positions_entry, _ = cache.get(
+                pkey, lambda: vaults.fetch_vaults(prefs.wallet, chain_id=prefs.chain), 60, 600
+            )
+            pools_entry, _ = cache.get(
+                qkey, lambda: api.fetch_pools(prefs.chain, source=prefs.source), 60, 600
+            )
+        except Exception as e:  # noqa: BLE001 — one user's feed failure must not stop the loop
+            log.warning("alerts: skipping %s: %s", prefs.user_id, e)
+            return None
+        return positions_entry, pools_entry
+    scope = str(prefs.user_id)
+    positions_entry = cache.peek((*pkey, scope))
+    pools_entry = cache.peek((*qkey, scope))
+    now = time.time()
+    if positions_entry is None or now - positions_entry.at > POSITIONS_MAX_AGE:
+        return None
+    if pools_entry is None or now - pools_entry.at > POOLS_MAX_AGE:
+        return None
+    return positions_entry, pools_entry
+
+
 async def tick(cache: Cache) -> int:
     """One pass over every user with alerts on; returns how many messages were sent."""
     sent = 0
@@ -116,24 +152,10 @@ async def tick(cache: Cache) -> int:
         bot = telegram(prefs.telegram_chat_id)
         if bot is None:
             return 0
-        try:
-            positions_entry, _ = await run_in_threadpool(
-                cache.get,
-                ("positions", prefs.chain, prefs.wallet.lower()),
-                lambda p=prefs: vaults.fetch_vaults(p.wallet, chain_id=p.chain),
-                60,
-                600,
-            )
-            pools_entry, _ = await run_in_threadpool(
-                cache.get,
-                ("pools", prefs.chain, prefs.source),
-                lambda p=prefs: api.fetch_pools(p.chain, source=p.source),
-                60,
-                600,
-            )
-        except Exception as e:  # noqa: BLE001 — one user's feed failure must not stop the loop
-            log.warning("alerts: skipping %s: %s", prefs.user_id, e)
+        loaded = await run_in_threadpool(load_feeds, cache, prefs)
+        if loaded is None:
             continue
+        positions_entry, pools_entry = loaded
         previous = {s.position_id: s.state async for s in AlertState.filter(user_id=prefs.user_id)}
         alerts, state = evaluate(prefs, positions_entry.value, pools_entry.value, previous)
         # Keep the verdict log and pool samples moving for this user even between page views.
