@@ -394,11 +394,21 @@ export function Workspace({
                         )}
                         note="Reported by the selected source"
                       />
-                      <Metric
-                        label="Risk profile"
-                        value={settings.profile}
-                        note="Filters and weighted scoring"
-                        accent
+                      <SizeMetric
+                        size={settings.size}
+                        demo={demo}
+                        onChange={(size) => {
+                          const next = { ...settings, size };
+                          setSettings(next);
+                          if (!demo)
+                            request("/api/account", {
+                              method: "POST",
+                              body: JSON.stringify({
+                                action: "settings",
+                                settings: next,
+                              }),
+                            }).catch((e) => setNotice(e.message));
+                        }}
                       />
                     </div>
                     <div className="filters">
@@ -736,7 +746,11 @@ export function Workspace({
             <span>
               Curator <span className="muted">/ independent LP research</span>
             </span>
-            <Link href="/">How Curator works ↗</Link>
+            <span className="footer-links">
+              <Link href="/">How Curator works ↗</Link>
+              <Link href="/terms">Terms</Link>
+              <Link href="/privacy">Privacy</Link>
+            </span>
           </footer>
         </div>
       </div>
@@ -817,6 +831,72 @@ function SortHeader({
         {active ? " ↓" : ""}
       </button>
     </th>
+  );
+}
+/** Simulation size as a header metric you can edit in place; persists with the account. */
+function SizeMetric({
+  size,
+  demo,
+  onChange,
+}: {
+  size: number;
+  demo: boolean;
+  onChange: (size: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(size));
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setDraft(String(size));
+  }, [size, editing]);
+  function commit() {
+    setEditing(false);
+    const n = Number(draft.replace(/[^0-9.]/g, ""));
+    if (Number.isFinite(n) && n >= 1 && n <= 100_000_000 && n !== size)
+      onChange(n);
+    else setDraft(String(size));
+  }
+  return (
+    <div className="metric metric-size">
+      <span>Simulation size</span>
+      <label className="size-input">
+        <b>$</b>
+        <input
+          aria-label="Simulation size in USD"
+          inputMode="decimal"
+          disabled={demo}
+          value={editing ? draft : size.toLocaleString("en-US")}
+          onFocus={(e) => {
+            setEditing(true);
+            setDraft(String(size));
+            e.currentTarget.select();
+          }}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              setDraft(String(size));
+              setEditing(false);
+              e.currentTarget.blur();
+            }
+          }}
+        />
+      </label>
+      <small className="size-presets">
+        {[1000, 5000, 10000, 50000].map((n) => (
+          <button
+            key={n}
+            type="button"
+            className={n === size ? "on" : ""}
+            disabled={demo}
+            onClick={() => onChange(n)}
+          >
+            {n >= 1000 ? `${n / 1000}k` : n}
+          </button>
+        ))}
+        <span>· fees, IL and share at this size</span>
+      </small>
+    </div>
   );
 }
 function Metric({

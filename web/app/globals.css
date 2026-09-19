@@ -3482,3 +3482,92 @@ td > .address-chip.tiny {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* Legal pages */
+.legal {
+  max-width: 720px;
+}
+.legal h1 {
+  margin-bottom: 26px;
+}
+.legal h2 {
+  font-size: 18px;
+  margin: 30px 0 8px;
+}
+.legal p,
+.legal li {
+  font-size: 14px;
+  line-height: 1.75;
+  color: #cfcdc4;
+}
+.legal ul {
+  padding-left: 18px;
+}
+.legal li + li {
+  margin-top: 8px;
+}
+.legal a {
+  color: var(--amber);
+}
+.footer-links {
+  display: flex;
+  gap: 18px;
+}
+
+/* Editable simulation size in the metric strip */
+.size-input {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  margin: 8px 0 4px;
+}
+.size-input b {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--amber);
+}
+.size-input input {
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed #3d4036;
+  background: transparent;
+  color: var(--text);
+  font-size: 29px;
+  font-weight: 500;
+  letter-spacing: -0.06em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.size-input input:focus-visible {
+  outline: none;
+  border-bottom-color: var(--amber);
+}
+.size-input input:disabled {
+  border-bottom-color: transparent;
+  color: var(--text);
+  opacity: 1;
+}
+.size-presets {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.size-presets button {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 1px 6px;
+}
+.size-presets button:hover:not(:disabled),
+.size-presets button.on {
+  color: var(--amber);
+  border-color: #5a4218;
+}
+.size-presets > span {
+  margin-left: 6px;
+}

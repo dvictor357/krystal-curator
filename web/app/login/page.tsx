@@ -134,7 +134,9 @@ export default function Login() {
         </Link>
         <small>
           Email accounts need no wallet; wallet accounts never send a
-          transaction.
+          transaction. By signing in you accept the{" "}
+          <Link href="/terms">terms</Link> and{" "}
+          <Link href="/privacy">privacy policy</Link>.
         </small>
       </main>
     </div>

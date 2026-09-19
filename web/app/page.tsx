@@ -247,6 +247,8 @@ export default function Home() {
         <a href="/source">
           Source code <ArrowUpRight size={13} />
         </a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
         <span className="mono">© {new Date().getFullYear()} Curator</span>
       </footer>
     </div>
